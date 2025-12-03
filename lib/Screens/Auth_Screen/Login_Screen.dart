@@ -3,20 +3,16 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:routelink/Core/Theme/App_theme.dart';
+import 'package:routelink/Models/user_model.dart';
+import 'package:routelink/Services/Firebase%20Auth.dart';
 
 import '../../Widgets/Custom_Textfield.dart';
 import '../../Widgets/Social_Button.dart';
-import '../RoleSelection/RoleSelection_Screen.dart';
-
+import '../DriverSIde/Driver_homeScreen.dart';
+import '../PassengerSide/PassengerHomeScreen.dart';
 import 'Forget_Screen/ForgetScreen.dart';
 import 'signup_screen.dart';
-
-
-/// ============================================
-/// LOGIN SCREEN
-/// Modern authentication UI
-/// ============================================
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -29,6 +25,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _authService = AuthService.to;
+
   bool _obscurePassword = true;
   bool _isLoading = false;
 
@@ -43,16 +41,21 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isLoading = true);
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
+      final success = await _authService.signIn(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
 
       setState(() => _isLoading = false);
 
-      // Navigate to role selection
-      Get.off(
-            () => const RoleSelectionScreen(),
-        transition: Transition.rightToLeftWithFade,
-      );
+      if (success && _authService.currentUser != null) {
+        // Navigate based on user role
+        if (_authService.currentUser!.role == UserRole.driver) {
+          Get.off(() => const DriverHomeScreen(), transition: Transition.fadeIn);
+        } else {
+          Get.off(() => const PassengerHomeScreen(), transition: Transition.fadeIn);
+        }
+      }
     }
   }
 
@@ -64,10 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
       body: Stack(
         children: [
-          // Background design
           _buildBackground(isDark),
-
-          // Main content
           SafeArea(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -76,45 +76,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 40),
-
-                  // Back button
                   _buildBackButton(isDark),
-
                   const SizedBox(height: 30),
-
-                  // Header
                   _buildHeader(isDark),
-
                   const SizedBox(height: 40),
-
-                  // Login form
                   _buildLoginForm(isDark),
-
                   const SizedBox(height: 24),
-
-                  // Forgot password
                   _buildForgotPassword(),
-
                   const SizedBox(height: 32),
-
-                  // Login button
                   _buildLoginButton(isDark),
-
                   const SizedBox(height: 32),
-
-                  // Divider
                   _buildDivider(isDark),
-
                   const SizedBox(height: 32),
-
-                  // Social login buttons
                   _buildSocialButtons(isDark),
-
                   const SizedBox(height: 40),
-
-                  // Sign up link
                   _buildSignUpLink(isDark),
-
                   const SizedBox(height: 30),
                 ],
               ),
@@ -142,10 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
-    )
-        .animate()
-        .fadeIn(duration: 800.ms)
-        .scale(begin: const Offset(0.8, 0.8));
+    ).animate().fadeIn(duration: 800.ms).scale(begin: const Offset(0.8, 0.8));
   }
 
   Widget _buildBackButton(bool isDark) {
@@ -157,66 +130,25 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkCard : AppColors.lightCard,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-          ),
+          border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
         ),
-        child: Icon(
-          Iconsax.arrow_left,
-          color: isDark ? Colors.white : AppColors.grey900,
-        ),
+        child: Icon(Iconsax.arrow_left, color: isDark ? Colors.white : AppColors.grey900),
       ),
-    )
-        .animate()
-        .fadeIn(duration: 500.ms)
-        .slideX(begin: -0.2, end: 0);
+    ).animate().fadeIn(duration: 500.ms).slideX(begin: -0.2, end: 0);
   }
 
   Widget _buildHeader(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Welcome',
-          style: GoogleFonts.urbanist(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.primaryYellow,
-            letterSpacing: 1,
-          ),
-        )
-            .animate()
-            .fadeIn(duration: 500.ms, delay: 200.ms)
-            .slideX(begin: -0.1, end: 0),
-
+        Text('Welcome', style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primaryYellow, letterSpacing: 1))
+            .animate().fadeIn(duration: 500.ms, delay: 200.ms).slideX(begin: -0.1, end: 0),
         const SizedBox(height: 8),
-
-        Text(
-          'Sign In',
-          style: GoogleFonts.urbanist(
-            fontSize: 36,
-            fontWeight: FontWeight.w800,
-            color: isDark ? Colors.white : AppColors.grey900,
-            letterSpacing: -1,
-          ),
-        )
-            .animate()
-            .fadeIn(duration: 500.ms, delay: 300.ms)
-            .slideX(begin: -0.1, end: 0),
-
+        Text('Sign In', style: GoogleFonts.urbanist(fontSize: 36, fontWeight: FontWeight.w800, color: isDark ? Colors.white : AppColors.grey900, letterSpacing: -1))
+            .animate().fadeIn(duration: 500.ms, delay: 300.ms).slideX(begin: -0.1, end: 0),
         const SizedBox(height: 8),
-
-        Text(
-          'Enter your credentials to continue',
-          style: GoogleFonts.urbanist(
-            fontSize: 16,
-            fontWeight: FontWeight.w400,
-            color: AppColors.grey500,
-          ),
-        )
-            .animate()
-            .fadeIn(duration: 500.ms, delay: 400.ms)
-            .slideX(begin: -0.1, end: 0),
+        Text('Enter your credentials to continue', style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w400, color: AppColors.grey500))
+            .animate().fadeIn(duration: 500.ms, delay: 400.ms).slideX(begin: -0.1, end: 0),
       ],
     );
   }
@@ -226,7 +158,6 @@ class _LoginScreenState extends State<LoginScreen> {
       key: _formKey,
       child: Column(
         children: [
-          // Email field
           CustomTextField(
             controller: _emailController,
             label: 'Email',
@@ -234,22 +165,12 @@ class _LoginScreenState extends State<LoginScreen> {
             prefixIcon: Iconsax.sms,
             keyboardType: TextInputType.emailAddress,
             validator: (value) {
-              if (value?.isEmpty ?? true) {
-                return 'Please enter your email';
-              }
-              if (!GetUtils.isEmail(value!)) {
-                return 'Please enter a valid email';
-              }
+              if (value?.isEmpty ?? true) return 'Please enter your email';
+              if (!GetUtils.isEmail(value!)) return 'Please enter a valid email';
               return null;
             },
-          )
-              .animate()
-              .fadeIn(duration: 500.ms, delay: 500.ms)
-              .slideY(begin: 0.1, end: 0),
-
+          ).animate().fadeIn(duration: 500.ms, delay: 500.ms).slideY(begin: 0.1, end: 0),
           const SizedBox(height: 20),
-
-          // Password field
           CustomTextField(
             controller: _passwordController,
             label: 'Password',
@@ -257,27 +178,15 @@ class _LoginScreenState extends State<LoginScreen> {
             prefixIcon: Iconsax.lock,
             obscureText: _obscurePassword,
             suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword ? Iconsax.eye_slash : Iconsax.eye,
-                color: AppColors.grey500,
-              ),
-              onPressed: () {
-                setState(() => _obscurePassword = !_obscurePassword);
-              },
+              icon: Icon(_obscurePassword ? Iconsax.eye_slash : Iconsax.eye, color: AppColors.grey500),
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
             validator: (value) {
-              if (value?.isEmpty ?? true) {
-                return 'Please enter your password';
-              }
-              if (value!.length < 6) {
-                return 'Password must be at least 6 characters';
-              }
+              if (value?.isEmpty ?? true) return 'Please enter your password';
+              if (value!.length < 6) return 'Password must be at least 6 characters';
               return null;
             },
-          )
-              .animate()
-              .fadeIn(duration: 500.ms, delay: 600.ms)
-              .slideY(begin: 0.1, end: 0),
+          ).animate().fadeIn(duration: 500.ms, delay: 600.ms).slideY(begin: 0.1, end: 0),
         ],
       ),
     );
@@ -287,24 +196,10 @@ class _LoginScreenState extends State<LoginScreen> {
     return Align(
       alignment: Alignment.centerRight,
       child: TextButton(
-        onPressed: () {
-          Get.to(
-                () => const ForgotPasswordScreen(),
-            transition: Transition.rightToLeftWithFade,
-          );
-        },
-        child: Text(
-          'Forgot Password?',
-          style: GoogleFonts.urbanist(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.primaryYellow,
-          ),
-        ),
+        onPressed: () => Get.to(() => const ForgotPasswordScreen(), transition: Transition.rightToLeftWithFade),
+        child: Text('Forgot Password?', style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primaryYellow)),
       ),
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 700.ms);
+    ).animate().fadeIn(duration: 500.ms, delay: 700.ms);
   }
 
   Widget _buildLoginButton(bool isDark) {
@@ -316,96 +211,37 @@ class _LoginScreenState extends State<LoginScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primaryYellow,
           foregroundColor: AppColors.darkBackground,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 0,
         ),
         child: _isLoading
-            ? SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.5,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              AppColors.darkBackground,
-            ),
-          ),
-        )
-            : Text(
-          'Sign In',
-          style: GoogleFonts.urbanist(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5, valueColor: AlwaysStoppedAnimation<Color>(AppColors.darkBackground)))
+            : Text('Sign In', style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700)),
       ),
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 800.ms)
-        .slideY(begin: 0.2, end: 0);
+    ).animate().fadeIn(duration: 500.ms, delay: 800.ms).slideY(begin: 0.2, end: 0);
   }
 
   Widget _buildDivider(bool isDark) {
     return Row(
       children: [
-        Expanded(
-          child: Container(
-            height: 1,
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-          ),
-        ),
+        Expanded(child: Container(height: 1, color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Or continue with',
-            style: GoogleFonts.urbanist(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppColors.grey500,
-            ),
-          ),
+          child: Text('Or continue with', style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.grey500)),
         ),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-          ),
-        ),
+        Expanded(child: Container(height: 1, color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
       ],
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 900.ms);
+    ).animate().fadeIn(duration: 500.ms, delay: 900.ms);
   }
 
   Widget _buildSocialButtons(bool isDark) {
     return Row(
       children: [
-        Expanded(
-          child: SocialButton(
-            icon: 'G',
-            label: 'Google',
-            onPressed: () {
-              // TODO: Implement Google sign in
-            },
-          ),
-        ),
+        Expanded(child: SocialButton(icon: 'G', label: 'Google', onPressed: () {})),
         const SizedBox(width: 16),
-        Expanded(
-          child: SocialButton(
-            icon: '',
-            label: 'Apple',
-            isApple: true,
-            onPressed: () {
-              // TODO: Implement Apple sign in
-            },
-          ),
-        ),
+        Expanded(child: SocialButton(icon: '', label: 'Apple', isApple: true, onPressed: () {})),
       ],
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 1000.ms)
-        .slideY(begin: 0.2, end: 0);
+    ).animate().fadeIn(duration: 500.ms, delay: 1000.ms).slideY(begin: 0.2, end: 0);
   }
 
   Widget _buildSignUpLink(bool isDark) {
@@ -413,34 +249,13 @@ class _LoginScreenState extends State<LoginScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            "Don't have an account? ",
-            style: GoogleFonts.urbanist(
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-              color: AppColors.grey500,
-            ),
-          ),
+          Text("Don't have an account? ", style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.grey500)),
           GestureDetector(
-            onTap: () {
-              Get.to(
-                    () => const SignUpScreen(),
-                transition: Transition.rightToLeftWithFade,
-              );
-            },
-            child: Text(
-              'Sign Up',
-              style: GoogleFonts.urbanist(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryYellow,
-              ),
-            ),
+            onTap: () => Get.to(() => const SignUpScreen(), transition: Transition.rightToLeftWithFade),
+            child: Text('Sign Up', style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primaryYellow)),
           ),
         ],
       ),
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 1100.ms);
+    ).animate().fadeIn(duration: 500.ms, delay: 1100.ms);
   }
 }

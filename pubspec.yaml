@@ -81,15 +81,15 @@ flutter:
 #    - assets/animations/
 #    - assets/3d/
 
-  fonts:
-    - family: Urbanist
-      fonts:
-        - asset: assets/fonts/Urbanist-Regular.ttf
-        - asset: assets/fonts/Urbanist-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Urbanist-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/Urbanist-Bold.ttf
-          weight: 700
-        - asset: assets/fonts/Urbanist-ExtraBold.ttf
-          weight: 800
+#  fonts:
+#    - family: Urbanist
+#      fonts:
+##        - asset: assets/fonts/Urbanist-Regular.ttf
+#        - asset: assets/fonts/Urbanist-Medium.ttf
+#          weight: 500
+#        - asset: assets/fonts/Urbanist-SemiBold.ttf
+#          weight: 600
+#        - asset: assets/fonts/Urbanist-Bold.ttf
+#          weight: 700
+#        - asset: assets/fonts/Urbanist-ExtraBold.ttf
+#          weight: 800

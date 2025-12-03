@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:routelink/Services/Firebase%20Auth.dart';
+import 'package:routelink/Services/RideService.dart';
+import 'package:routelink/Services/chatService.dart';
 import 'firebase_options.dart';
 
 import 'Core/Theme/Theme_controller.dart';
+
 import 'Screens/Splash_Screen/SplashScreen.dart';
 import 'core/theme/app_theme.dart';
 
@@ -32,8 +36,11 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // Initialize controllers
+  // Initialize controllers and services
   Get.put(ThemeController());
+  Get.put(AuthService());
+  Get.put(RideService());
+  Get.put(ChatService());
 
   runApp(const RouteLinkApp());
 }
