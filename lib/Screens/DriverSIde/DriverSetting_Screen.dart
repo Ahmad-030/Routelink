@@ -27,6 +27,15 @@ class _DriverSettingsScreenState extends State<DriverSettingsScreen> {
   bool _soundEnabled = true;
 
   @override
+  void initState() {
+    super.initState();
+    // Ensure ThemeController is registered
+    if (!Get.isRegistered<ThemeController>()) {
+      Get.put(ThemeController());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final user = AuthService.to.currentUser;
@@ -138,15 +147,24 @@ class _DriverSettingsScreenState extends State<DriverSettingsScreen> {
                   _buildSectionTitle('Appearance', isDark),
                   const SizedBox(height: 12),
                   _buildSettingsCard(isDark, [
-                    Obx(() => _buildSwitchItem(
+                    _buildSwitchItem(
                       icon: isDark ? Iconsax.moon : Iconsax.sun_1,
                       title: 'Dark Mode',
                       subtitle: 'Toggle dark/light theme',
-                      value: ThemeController.to.isDarkMode,
+                      value: isDark,
                       isDark: isDark,
-                      onChanged: (val) => ThemeController.to.toggleTheme(),
+                      onChanged: (val) {
+                        // Safely toggle theme
+                        if (Get.isRegistered<ThemeController>()) {
+                          ThemeController.to.toggleTheme();
+                        } else {
+                          Get.changeThemeMode(
+                            Get.isDarkMode ? ThemeMode.light : ThemeMode.dark,
+                          );
+                        }
+                      },
                       showDivider: false,
-                    )),
+                    ),
                   ]),
                   const SizedBox(height: 24),
 
@@ -225,7 +243,9 @@ class _DriverSettingsScreenState extends State<DriverSettingsScreen> {
             ),
             child: Center(
               child: Text(
-                user?.name.substring(0, 1).toUpperCase() ?? 'D',
+                user?.name.isNotEmpty == true
+                    ? user!.name.substring(0, 1).toUpperCase()
+                    : 'D',
                 style: GoogleFonts.urbanist(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
