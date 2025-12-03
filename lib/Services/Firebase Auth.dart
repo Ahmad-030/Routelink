@@ -17,6 +17,9 @@ class AuthService extends GetxService {
 
   bool get isAuthenticated => _firebaseUser.value != null;
 
+  // Add a getter to check if user data is loaded
+  bool get isUserDataLoaded => _currentUser.value != null && _firebaseUser.value != null;
+
   @override
   void onInit() {
     super.onInit();
@@ -44,18 +47,25 @@ class AuthService extends GetxService {
       final doc = await _firestore.collection('users').doc(uid).get();
 
       if (doc.exists) {
-        _currentUser.value = UserModel.fromMap(doc.data()!);
-        print('User data loaded: ${_currentUser.value?.name}, Role: ${_currentUser.value?.role}');
+        final data = doc.data()!;
+        _currentUser.value = UserModel.fromMap(data);
+
+        // Debug print to verify role is loaded correctly
+        print('✅ User data loaded successfully:');
+        print('   Name: ${_currentUser.value?.name}');
+        print('   Email: ${_currentUser.value?.email}');
+        print('   Role (enum): ${_currentUser.value?.role}');
+        print('   Role (string): ${data['role']}');
+        print('   Is Driver: ${_currentUser.value?.role == UserRole.driver}');
+        print('   Is Passenger: ${_currentUser.value?.role == UserRole.passenger}');
       } else {
-        print('User document does not exist in Firestore');
-        // User exists in Auth but not in Firestore - handle this edge case
+        print('❌ User document does not exist in Firestore');
         _currentUser.value = null;
       }
     } catch (e) {
-      print('Error loading user data: $e');
+      print('❌ Error loading user data: $e');
       _currentUser.value = null;
 
-      // Show error to user
       Get.snackbar(
         'Error',
         'Failed to load user data. Please try logging in again.',
@@ -93,6 +103,7 @@ class AuthService extends GetxService {
           createdAt: DateTime.now(),
         );
 
+        // Save to Firestore
         await _firestore
             .collection('users')
             .doc(credential.user!.uid)
@@ -101,7 +112,13 @@ class AuthService extends GetxService {
         // Update display name
         await credential.user!.updateDisplayName(name);
 
-        print('User created successfully: ${credential.user!.uid}');
+        print('✅ User created successfully:');
+        print('   UID: ${credential.user!.uid}');
+        print('   Role: $role');
+
+        // Manually set the current user to avoid race condition
+        _currentUser.value = userModel;
+
         return true;
       }
       return false;
@@ -109,7 +126,7 @@ class AuthService extends GetxService {
       _handleAuthError(e);
       return false;
     } catch (e) {
-      print('Sign up error: $e');
+      print('❌ Sign up error: $e');
       Get.snackbar(
         'Error',
         'An unexpected error occurred. Please try again.',
@@ -119,7 +136,7 @@ class AuthService extends GetxService {
     }
   }
 
-  /// Sign in existing user
+  /// Sign in existing user - IMPROVED VERSION
   Future<bool> signIn({
     required String email,
     required String password,
@@ -131,16 +148,32 @@ class AuthService extends GetxService {
       );
 
       if (credential.user != null) {
-        print('Sign in successful: ${credential.user!.uid}');
-        // User data will be loaded automatically by _handleAuthChanged
-        return true;
+        print('✅ Sign in successful: ${credential.user!.uid}');
+
+        // Force load user data immediately to avoid race conditions
+        await _loadUserData(credential.user!.uid);
+
+        // Wait a bit to ensure data is fully loaded
+        int attempts = 0;
+        while (_currentUser.value == null && attempts < 10) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          attempts++;
+        }
+
+        if (_currentUser.value != null) {
+          print('✅ User data loaded, role: ${_currentUser.value!.role}');
+          return true;
+        } else {
+          print('❌ Failed to load user data after sign in');
+          return false;
+        }
       }
       return false;
     } on FirebaseAuthException catch (e) {
       _handleAuthError(e);
       return false;
     } catch (e) {
-      print('Sign in error: $e');
+      print('❌ Sign in error: $e');
       Get.snackbar(
         'Error',
         'An unexpected error occurred. Please try again.',
@@ -155,9 +188,9 @@ class AuthService extends GetxService {
     try {
       await _auth.signOut();
       _currentUser.value = null;
-      print('User signed out successfully');
+      print('✅ User signed out successfully');
     } catch (e) {
-      print('Sign out error: $e');
+      print('❌ Sign out error: $e');
       Get.snackbar(
         'Error',
         'Failed to sign out. Please try again.',
@@ -180,7 +213,7 @@ class AuthService extends GetxService {
       _handleAuthError(e);
       return false;
     } catch (e) {
-      print('Reset password error: $e');
+      print('❌ Reset password error: $e');
       Get.snackbar(
         'Error',
         'Failed to send reset email. Please try again.',
@@ -261,7 +294,7 @@ class AuthService extends GetxService {
       }
       return false;
     } catch (e) {
-      print('Update profile error: $e');
+      print('❌ Update profile error: $e');
       Get.snackbar(
         'Error',
         'Failed to update profile. Please try again.',

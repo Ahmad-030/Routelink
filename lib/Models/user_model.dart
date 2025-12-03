@@ -1,6 +1,12 @@
+// Make sure your UserModel has proper role conversion
+// This should be in your user_model.dart file
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum UserRole { driver, passenger }
+enum UserRole {
+  driver,
+  passenger,
+}
 
 class UserModel {
   final String uid;
@@ -25,55 +31,51 @@ class UserModel {
     required this.createdAt,
   });
 
-  /// Convert UserModel to Map for Firestore
+  // Convert UserModel to Map for Firestore
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
       'name': name,
       'email': email,
       'phone': phone,
-      'role': role.toString().split('.').last, // Convert enum to string
+      'role': role.toString().split('.').last, // Saves as 'driver' or 'passenger'
       'profileImage': profileImage,
       'rating': rating,
       'totalRides': totalRides,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'createdAt': Timestamp.fromDate(createdAt), // Save as Firestore Timestamp
     };
   }
 
-  /// Create UserModel from Firestore Map
+  // Create UserModel from Firestore Map
   factory UserModel.fromMap(Map<String, dynamic> map) {
+    // Handle createdAt field - can be either Timestamp or String
+    DateTime createdAtDate;
+    if (map['createdAt'] is Timestamp) {
+      // If it's a Firestore Timestamp, convert to DateTime
+      createdAtDate = (map['createdAt'] as Timestamp).toDate();
+    } else if (map['createdAt'] is String) {
+      // If it's a String, parse it
+      createdAtDate = DateTime.parse(map['createdAt']);
+    } else {
+      // Fallback to current time
+      createdAtDate = DateTime.now();
+    }
+
     return UserModel(
       uid: map['uid'] ?? '',
       name: map['name'] ?? '',
       email: map['email'] ?? '',
       phone: map['phone'] ?? '',
-      role: _roleFromString(map['role'] ?? 'passenger'),
+      // CRITICAL: Properly convert string to enum
+      role: map['role'] == 'driver' ? UserRole.driver : UserRole.passenger,
       profileImage: map['profileImage'] ?? '',
       rating: (map['rating'] ?? 0.0).toDouble(),
       totalRides: map['totalRides'] ?? 0,
-      createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: createdAtDate,
     );
   }
 
-  /// Create UserModel from Firestore DocumentSnapshot
-  factory UserModel.fromSnapshot(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return UserModel.fromMap(data);
-  }
-
-  /// Helper method to convert string to UserRole enum
-  static UserRole _roleFromString(String role) {
-    switch (role.toLowerCase()) {
-      case 'driver':
-        return UserRole.driver;
-      case 'passenger':
-        return UserRole.passenger;
-      default:
-        return UserRole.passenger;
-    }
-  }
-
-  /// Copy method for creating modified copies
+  // Create a copy with some fields changed
   UserModel copyWith({
     String? uid,
     String? name,
@@ -97,16 +99,4 @@ class UserModel {
       createdAt: createdAt ?? this.createdAt,
     );
   }
-
-  /// Convert to JSON string
-  @override
-  String toString() {
-    return 'UserModel(uid: $uid, name: $name, email: $email, role: ${role.toString().split('.').last})';
-  }
-
-  /// Check if user is a driver
-  bool get isDriver => role == UserRole.driver;
-
-  /// Check if user is a passenger
-  bool get isPassenger => role == UserRole.passenger;
 }

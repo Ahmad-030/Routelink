@@ -14,6 +14,7 @@ import '../../Models/Ride_request_model.dart';
 import '../../Services/Firebase Auth.dart';
 import '../Chat/Chat_Screen.dart';
 import 'Driver_BottomNav.dart';
+import 'dart:async';
 
 import 'RideRequest.dart';
 import 'RouteSetup.dart';
@@ -63,11 +64,30 @@ class _DriverHomeContent extends StatefulWidget {
 class _DriverHomeContentState extends State<_DriverHomeContent> {
   RideModel? _activeRide;
   bool _isLoading = true;
+  String _currentTime = '';
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _checkActiveRide();
+    _updateTime();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _updateTime();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _updateTime() {
+    final now = DateTime.now().toUtc().add(const Duration(hours: 5)); // PKT is UTC+5
+    setState(() {
+      _currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    });
   }
 
   void _checkActiveRide() async {
@@ -262,16 +282,29 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
         child: Row(
           children: [
             Container(
-              width: 50,
-              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: isDark ? AppColors.darkCard : AppColors.lightCard,
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
               ),
-              child: IconButton(
-                icon: Icon(Iconsax.menu_1, color: isDark ? Colors.white : AppColors.grey900),
-                onPressed: () {},
+              child: Row(
+                children: [
+                  Icon(
+                    Iconsax.clock,
+                    color: AppColors.primaryYellow,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _currentTime,
+                    style: GoogleFonts.urbanist(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : AppColors.grey900,
+                    ),
+                  ),
+                ],
               ),
             ).animate().fadeIn(duration: 500.ms).slideX(begin: -0.2, end: 0),
             const Spacer(),

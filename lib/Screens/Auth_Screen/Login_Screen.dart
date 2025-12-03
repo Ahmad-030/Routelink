@@ -49,16 +49,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return;
 
-        setState(() => _isLoading = false);
-
         if (success) {
-          // Get the current user to check their role
+          // Wait for user data to be fully loaded
+          // The AuthService's _handleAuthChanged will load user data
+          await Future.delayed(const Duration(milliseconds: 800));
+
           final currentUser = _authService.currentUser;
 
           if (currentUser != null) {
+            setState(() => _isLoading = false);
+
             Get.snackbar(
               'Success',
-              'Welcome back!',
+              'Welcome back, ${currentUser.name}!',
               backgroundColor: AppColors.success,
               colorText: Colors.white,
               snackPosition: SnackPosition.TOP,
@@ -68,20 +71,26 @@ class _LoginScreenState extends State<LoginScreen> {
             // Navigate based on user role
             await Future.delayed(const Duration(milliseconds: 300));
 
-            if (currentUser.role == 'driver') {
+            if (currentUser.role == UserRole.driver) {
+              print('Navigating to Driver Screen - Role: ${currentUser.role}');
               Get.offAll(() => const DriverHomeScreen(), transition: Transition.fadeIn);
             } else {
+              print('Navigating to Passenger Screen - Role: ${currentUser.role}');
               Get.offAll(() => const PassengerHomeScreen(), transition: Transition.fadeIn);
             }
           } else {
-            // User data not loaded yet, wait a bit and try again
+            // If user data still not loaded, try one more time
             await Future.delayed(const Duration(milliseconds: 500));
             final retryUser = _authService.currentUser;
 
+            setState(() => _isLoading = false);
+
             if (retryUser != null) {
-              if (retryUser.role == 'driver') {
+              if (retryUser.role == UserRole.driver) {
+                print('Retry - Navigating to Driver Screen - Role: ${retryUser.role}');
                 Get.offAll(() => const DriverHomeScreen(), transition: Transition.fadeIn);
               } else {
+                print('Retry - Navigating to Passenger Screen - Role: ${retryUser.role}');
                 Get.offAll(() => const PassengerHomeScreen(), transition: Transition.fadeIn);
               }
             } else {
@@ -94,6 +103,8 @@ class _LoginScreenState extends State<LoginScreen> {
               );
             }
           }
+        } else {
+          setState(() => _isLoading = false);
         }
       } catch (e) {
         if (!mounted) return;
@@ -109,7 +120,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;

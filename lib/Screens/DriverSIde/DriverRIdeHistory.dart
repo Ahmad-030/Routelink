@@ -39,6 +39,12 @@ class DriverRideHistoryScreen extends StatelessWidget {
           ),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(Iconsax.trash, color: isDark ? Colors.white : AppColors.grey900),
+            onPressed: () => _showDeleteAllDialog(context, userId, isDark),
+          ),
+        ],
       ),
       body: userId == null
           ? _buildEmptyState(isDark)
@@ -73,12 +79,236 @@ class DriverRideHistoryScreen extends StatelessWidget {
                 'id': rides[index].id,
                 ...rideData,
               });
-              return _buildRideCard(ride, isDark, index);
+              return _buildSwipeableRideCard(
+                context,
+                ride,
+                rides[index].id,
+                isDark,
+                index,
+              );
             },
           );
         },
       ),
     );
+  }
+
+  Widget _buildSwipeableRideCard(
+      BuildContext context,
+      RideModel ride,
+      String rideId,
+      bool isDark,
+      int index,
+      ) {
+    return Dismissible(
+      key: Key(rideId),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: AppColors.error,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        alignment: Alignment.centerRight,
+        child: const Icon(
+          Iconsax.trash,
+          color: Colors.white,
+          size: 28,
+        ),
+      ),
+      confirmDismiss: (direction) async {
+        return await _showDeleteConfirmDialog(context, isDark);
+      },
+      onDismissed: (direction) {
+        _deleteRide(rideId);
+        Get.snackbar(
+          'Deleted',
+          'Ride removed from history',
+          backgroundColor: AppColors.success,
+          colorText: Colors.white,
+          icon: const Icon(Iconsax.tick_circle, color: Colors.white),
+          snackPosition: SnackPosition.BOTTOM,
+          margin: const EdgeInsets.all(16),
+          borderRadius: 12,
+          duration: const Duration(seconds: 2),
+        );
+      },
+      child: _buildRideCard(ride, isDark, index),
+    );
+  }
+
+  Future<bool?> _showDeleteConfirmDialog(BuildContext context, bool isDark) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Delete Ride',
+          style: GoogleFonts.urbanist(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : AppColors.grey900,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete this ride from your history?',
+          style: GoogleFonts.urbanist(
+            fontSize: 16,
+            color: AppColors.grey500,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.urbanist(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.grey500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            child: Text(
+              'Delete',
+              style: GoogleFonts.urbanist(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteAllDialog(BuildContext context, String? userId, bool isDark) {
+    if (userId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Delete All History',
+          style: GoogleFonts.urbanist(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : AppColors.grey900,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete all your ride history? This action cannot be undone.',
+          style: GoogleFonts.urbanist(
+            fontSize: 16,
+            color: AppColors.grey500,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.urbanist(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.grey500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _deleteAllRides(userId);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            child: Text(
+              'Delete All',
+              style: GoogleFonts.urbanist(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteRide(String rideId) async {
+    try {
+      await FirebaseFirestore.instance.collection('rides').doc(rideId).delete();
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to delete ride',
+        backgroundColor: AppColors.error,
+        colorText: Colors.white,
+        icon: const Icon(Iconsax.danger, color: Colors.white),
+        snackPosition: SnackPosition.BOTTOM,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 12,
+      );
+    }
+  }
+
+  Future<void> _deleteAllRides(String userId) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('rides')
+          .where('driverId', isEqualTo: userId)
+          .where('status', whereIn: ['completed', 'cancelled'])
+          .get();
+
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      Get.snackbar(
+        'Success',
+        'All ride history deleted',
+        backgroundColor: AppColors.success,
+        colorText: Colors.white,
+        icon: const Icon(Iconsax.tick_circle, color: Colors.white),
+        snackPosition: SnackPosition.BOTTOM,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 12,
+        duration: const Duration(seconds: 2),
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to delete history',
+        backgroundColor: AppColors.error,
+        colorText: Colors.white,
+        icon: const Icon(Iconsax.danger, color: Colors.white),
+        snackPosition: SnackPosition.BOTTOM,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 12,
+      );
+    }
   }
 
   Widget _buildRideCard(RideModel ride, bool isDark, int index) {
