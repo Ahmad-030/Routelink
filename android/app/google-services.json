@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1034968302272",
+    "project_id": "routelink-1428b",
+    "storage_bucket": "routelink-1428b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1034968302272:android:790cbee40c82233fb7e325",
+        "android_client_info": {
+          "package_name": "com.example.routelink"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHLjkZe6080sk4Xz5mHMA5dc82_9bMoCA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
