@@ -2,22 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../Widgets/Custom_Textfield.dart';
+import '../../Core/Theme/App_theme.dart';
+import '../../Models/Ride_model.dart';
 
-
-/// ============================================
-/// ROUTE SETUP SHEET
-/// Bottom sheet for setting up driver route
-/// ============================================
+/// Callback type for route publishing
+typedef OnPublishCallback = void Function(
+    LocationPoint startLocation,
+    LocationPoint endLocation,
+    CarDetails carDetails,
+    int seats,
+    int? fare,
+    );
 
 class RouteSetupSheet extends StatefulWidget {
-  final VoidCallback onPublish;
+  final OnPublishCallback onPublish;
 
-  const RouteSetupSheet({
-    super.key,
-    required this.onPublish,
-  });
+  const RouteSetupSheet({super.key, required this.onPublish});
 
   @override
   State<RouteSetupSheet> createState() => _RouteSetupSheetState();
@@ -43,6 +43,43 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
     super.dispose();
   }
 
+  void _handlePublish() {
+    if (_startController.text.isEmpty || _destinationController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter start and destination'), backgroundColor: AppColors.error),
+      );
+      return;
+    }
+
+    if (_carNameController.text.isEmpty || _carNumberController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter car details'), backgroundColor: AppColors.error),
+      );
+      return;
+    }
+
+    final startLocation = LocationPoint(
+      latitude: 31.5204 + (DateTime.now().millisecond / 10000),
+      longitude: 74.3587 + (DateTime.now().millisecond / 10000),
+      address: _startController.text,
+    );
+
+    final endLocation = LocationPoint(
+      latitude: 31.4697 + (DateTime.now().millisecond / 10000),
+      longitude: 74.2728 + (DateTime.now().millisecond / 10000),
+      address: _destinationController.text,
+    );
+
+    final carDetails = CarDetails(
+      name: _carNameController.text,
+      number: _carNumberController.text,
+    );
+
+    final fare = int.tryParse(_fareController.text);
+
+    widget.onPublish(startLocation, endLocation, carDetails, _availableSeats, fare);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -60,10 +97,7 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
             margin: const EdgeInsets.only(top: 12),
             width: 40,
             height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.grey500,
-              borderRadius: BorderRadius.circular(2),
-            ),
+            decoration: BoxDecoration(color: AppColors.grey500, borderRadius: BorderRadius.circular(2)),
           ),
 
           // Header
@@ -77,11 +111,7 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
                     color: AppColors.primaryYellow.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
-                    Iconsax.routing_2,
-                    color: AppColors.primaryYellow,
-                    size: 24,
-                  ),
+                  child: const Icon(Iconsax.routing_2, color: AppColors.primaryYellow, size: 24),
                 ),
                 const SizedBox(width: 16),
                 Column(
@@ -89,26 +119,22 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
                   children: [
                     Text(
                       'Set Your Route',
-                      style: GoogleFonts.urbanist(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : AppColors.grey900,
-                      ),
+                      style: GoogleFonts.urbanist(fontSize: 22, fontWeight: FontWeight.w700, color: isDark ? Colors.white : AppColors.grey900),
                     ),
                     Text(
                       'Step ${_currentStep + 1} of 2',
-                      style: GoogleFonts.urbanist(
-                        fontSize: 14,
-                        color: AppColors.grey500,
-                      ),
+                      style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500),
                     ),
                   ],
                 ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Iconsax.close_circle, color: AppColors.grey500),
+                ),
               ],
             ),
-          )
-              .animate()
-              .fadeIn(duration: 400.ms),
+          ).animate().fadeIn(duration: 400.ms),
 
           // Progress indicator
           Padding(
@@ -129,9 +155,7 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
                   child: Container(
                     height: 4,
                     decoration: BoxDecoration(
-                      color: _currentStep >= 1
-                          ? AppColors.primaryYellow
-                          : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                      color: _currentStep >= 1 ? AppColors.primaryYellow : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -147,9 +171,7 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               physics: const BouncingScrollPhysics(),
-              child: _currentStep == 0
-                  ? _buildRouteStep(isDark)
-                  : _buildCarDetailsStep(isDark),
+              child: _currentStep == 0 ? _buildRouteStep(isDark) : _buildCarDetailsStep(isDark),
             ),
           ),
 
@@ -161,25 +183,15 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
                 if (_currentStep > 0)
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () {
-                        setState(() => _currentStep--);
-                      },
+                      onPressed: () => setState(() => _currentStep--),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: BorderSide(
-                          color: isDark ? AppColors.grey600 : AppColors.grey400,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
+                        side: BorderSide(color: isDark ? AppColors.grey600 : AppColors.grey400),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       child: Text(
                         'Back',
-                        style: GoogleFonts.urbanist(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white : AppColors.grey900,
-                        ),
+                        style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppColors.grey900),
                       ),
                     ),
                   ),
@@ -189,36 +201,27 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
                   child: ElevatedButton(
                     onPressed: () {
                       if (_currentStep < 1) {
+                        if (_startController.text.isEmpty || _destinationController.text.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Please fill in all fields'), backgroundColor: AppColors.error),
+                          );
+                          return;
+                        }
                         setState(() => _currentStep++);
                       } else {
-                        widget.onPublish();
+                        _handlePublish();
                       }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryYellow,
                       foregroundColor: AppColors.darkBackground,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       elevation: 0,
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _currentStep < 1 ? 'Next' : 'Publish Route',
-                          style: GoogleFonts.urbanist(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          _currentStep < 1 ? Iconsax.arrow_right : Iconsax.send_1,
-                          size: 20,
-                        ),
-                      ],
+                    child: Text(
+                      _currentStep < 1 ? 'Continue' : 'Publish Route',
+                      style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
@@ -234,195 +237,125 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(
+          'Where are you going?',
+          style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? Colors.white : AppColors.grey900),
+        ),
+        const SizedBox(height: 20),
+
         // Start location
         _buildLocationField(
           controller: _startController,
-          label: 'Start Location',
-          hint: 'Enter pickup point',
+          hint: 'Pickup Location',
           icon: Iconsax.location,
           iconColor: AppColors.success,
           isDark: isDark,
-        )
-            .animate()
-            .fadeIn(duration: 400.ms, delay: 100.ms)
-            .slideY(begin: 0.1, end: 0),
+        ),
+        const SizedBox(height: 16),
 
         // Route line
         Padding(
-          padding: const EdgeInsets.only(left: 35),
-          child: Container(
-            width: 2,
-            height: 40,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppColors.success,
-                  AppColors.primaryYellow,
-                ],
+          padding: const EdgeInsets.only(left: 20),
+          child: Column(
+            children: List.generate(3, (i) => Container(
+              width: 2,
+              height: 8,
+              margin: const EdgeInsets.symmetric(vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.primaryYellow.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(1),
               ),
-            ),
+            )),
           ),
         ),
+        const SizedBox(height: 16),
 
-        // Destination
+        // End location
         _buildLocationField(
           controller: _destinationController,
-          label: 'Destination',
-          hint: 'Enter drop-off point',
+          hint: 'Drop-off Location',
           icon: Iconsax.location_tick,
-          iconColor: AppColors.primaryYellow,
+          iconColor: AppColors.error,
           isDark: isDark,
-        )
-            .animate()
-            .fadeIn(duration: 400.ms, delay: 200.ms)
-            .slideY(begin: 0.1, end: 0),
-
-        const SizedBox(height: 24),
-
-        // Add via point button
-        OutlinedButton.icon(
-          onPressed: () {
-            // TODO: Add via point functionality
-          },
-          icon: const Icon(Iconsax.add, size: 20),
-          label: Text(
-            'Add Via Point (Optional)',
-            style: GoogleFonts.urbanist(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.primaryYellow,
-            side: const BorderSide(color: AppColors.primaryYellow),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        )
-            .animate()
-            .fadeIn(duration: 400.ms, delay: 300.ms),
+        ),
 
         const SizedBox(height: 30),
-      ],
-    );
-  }
 
-  Widget _buildLocationField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    required Color iconColor,
-    required bool isDark,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          margin: const EdgeInsets.only(top: 28),
-          decoration: BoxDecoration(
-            color: iconColor.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: iconColor,
-            size: 22,
-          ),
+        // Quick suggestions
+        Text(
+          'Popular Routes',
+          style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppColors.grey900),
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: CustomTextField(
-            controller: controller,
-            label: label,
-            hint: hint,
-          ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _buildSuggestionChip('Lahore → Islamabad', isDark),
+            _buildSuggestionChip('DHA → Gulberg', isDark),
+            _buildSuggestionChip('Model Town → Airport', isDark),
+          ],
         ),
       ],
-    );
+    ).animate().fadeIn(duration: 400.ms);
   }
 
   Widget _buildCarDetailsStep(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Car name
-        CustomTextField(
-          controller: _carNameController,
-          label: 'Car Name',
-          hint: 'e.g., Toyota Corolla',
-          prefixIcon: Iconsax.car,
-        )
-            .animate()
-            .fadeIn(duration: 400.ms, delay: 100.ms)
-            .slideY(begin: 0.1, end: 0),
-
+        Text(
+          'Vehicle Details',
+          style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? Colors.white : AppColors.grey900),
+        ),
         const SizedBox(height: 20),
 
-        // Car number
-        CustomTextField(
-          controller: _carNumberController,
-          label: 'Car Number',
-          hint: 'e.g., ABC-1234',
-          prefixIcon: Iconsax.card,
-        )
-            .animate()
-            .fadeIn(duration: 400.ms, delay: 200.ms)
-            .slideY(begin: 0.1, end: 0),
+        // Car name
+        _buildTextField(
+          controller: _carNameController,
+          hint: 'Car Model (e.g., Honda Civic)',
+          icon: Iconsax.car,
+          isDark: isDark,
+        ),
+        const SizedBox(height: 16),
 
+        // Car number
+        _buildTextField(
+          controller: _carNumberController,
+          hint: 'License Plate (e.g., ABC-1234)',
+          icon: Iconsax.card,
+          isDark: isDark,
+        ),
         const SizedBox(height: 24),
 
         // Available seats
         Text(
           'Available Seats',
-          style: GoogleFonts.urbanist(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : AppColors.grey900,
-          ),
-        )
-            .animate()
-            .fadeIn(duration: 400.ms, delay: 300.ms),
-
+          style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppColors.grey900),
+        ),
         const SizedBox(height: 12),
-
         Row(
-          children: List.generate(4, (index) {
-            final seats = index + 1;
+          children: List.generate(4, (i) {
+            final seats = i + 1;
             final isSelected = _availableSeats == seats;
             return Expanded(
               child: GestureDetector(
-                onTap: () {
-                  setState(() => _availableSeats = seats);
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: EdgeInsets.only(right: index < 3 ? 12 : 0),
+                onTap: () => setState(() => _availableSeats = seats),
+                child: Container(
+                  margin: EdgeInsets.only(right: i < 3 ? 10 : 0),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.primaryYellow
-                        : (isDark ? AppColors.darkCard : AppColors.lightElevated),
+                    color: isSelected ? AppColors.primaryYellow : (isDark ? AppColors.darkCard : AppColors.lightCard),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isSelected
-                          ? AppColors.primaryYellow
-                          : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                      color: isSelected ? AppColors.primaryYellow : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
                     ),
                   ),
                   child: Column(
                     children: [
                       Icon(
                         Iconsax.user,
-                        color: isSelected
-                            ? AppColors.darkBackground
-                            : AppColors.grey500,
+                        color: isSelected ? AppColors.darkBackground : AppColors.grey500,
                         size: 20,
                       ),
                       const SizedBox(height: 4),
@@ -431,9 +364,7 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
                         style: GoogleFonts.urbanist(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: isSelected
-                              ? AppColors.darkBackground
-                              : (isDark ? Colors.white : AppColors.grey900),
+                          color: isSelected ? AppColors.darkBackground : (isDark ? Colors.white : AppColors.grey900),
                         ),
                       ),
                     ],
@@ -442,26 +373,125 @@ class _RouteSetupSheetState extends State<RouteSetupSheet> {
               ),
             );
           }),
-        )
-            .animate()
-            .fadeIn(duration: 400.ms, delay: 400.ms),
+        ),
 
         const SizedBox(height: 24),
 
         // Suggested fare
-        CustomTextField(
+        Text(
+          'Suggested Fare (Optional)',
+          style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppColors.grey900),
+        ),
+        const SizedBox(height: 12),
+        _buildTextField(
           controller: _fareController,
-          label: 'Suggested Fare (Optional)',
           hint: 'Enter amount in PKR',
-          prefixIcon: Iconsax.money,
+          icon: Iconsax.money,
+          isDark: isDark,
           keyboardType: TextInputType.number,
-        )
-            .animate()
-            .fadeIn(duration: 400.ms, delay: 500.ms)
-            .slideY(begin: 0.1, end: 0),
-
-        const SizedBox(height: 30),
+        ),
       ],
+    ).animate().fadeIn(duration: 400.ms);
+  }
+
+  Widget _buildLocationField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    required Color iconColor,
+    required bool isDark,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            child: Icon(icon, color: iconColor, size: 22),
+          ),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              style: GoogleFonts.urbanist(fontSize: 16, color: isDark ? Colors.white : AppColors.grey900),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: () {},
+            icon: Icon(Iconsax.gps, color: AppColors.grey500, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    required bool isDark,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkCard : AppColors.lightCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            child: Icon(icon, color: AppColors.primaryYellow, size: 22),
+          ),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              keyboardType: keyboardType,
+              style: GoogleFonts.urbanist(fontSize: 16, color: isDark ? Colors.white : AppColors.grey900),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSuggestionChip(String text, bool isDark) {
+    return GestureDetector(
+      onTap: () {
+        final parts = text.split(' → ');
+        if (parts.length == 2) {
+          _startController.text = parts[0];
+          _destinationController.text = parts[1];
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkCard : AppColors.lightCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        ),
+        child: Text(
+          text,
+          style: GoogleFonts.urbanist(fontSize: 14, color: isDark ? Colors.white70 : AppColors.grey700),
+        ),
+      ),
     );
   }
 }

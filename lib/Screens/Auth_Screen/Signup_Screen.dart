@@ -3,15 +3,17 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
-import '../../../core/theme/app_theme.dart';
+import '../../Core/Theme/App_theme.dart';
+import '../../Models/user_model.dart';
+import '../../Services/Firebase Auth.dart';
 import '../../Widgets/Custom_Textfield.dart';
 import '../../Widgets/Social_Button.dart';
-import '../RoleSelection/RoleSelection_Screen.dart';
-
+import '../DriverSIde/Driver_homeScreen.dart';
+import '../PassengerSide/PassengerHomeScreen.dart';
 
 /// ============================================
 /// SIGNUP SCREEN
-/// User registration with modern UI
+/// User registration with role selection
 /// ============================================
 
 class SignUpScreen extends StatefulWidget {
@@ -33,6 +35,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   bool _acceptTerms = false;
+  UserRole? _selectedRole;
 
   @override
   void dispose() {
@@ -43,6 +46,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _confirmPasswordController.dispose();
     super.dispose();
   }
+
+  // In your SignUpScreen, update the _handleSignUp method:
 
   void _handleSignUp() async {
     if (_formKey.currentState?.validate() ?? false) {
@@ -57,18 +62,41 @@ class _SignUpScreenState extends State<SignUpScreen> {
         return;
       }
 
+      if (_selectedRole == null) {
+        Get.snackbar(
+          'Role Required',
+          'Please select your role (Driver or Passenger)',
+          backgroundColor: AppColors.error,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+        );
+        return;
+      }
+
       setState(() => _isLoading = true);
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
+      final success = await AuthService.to.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        name: _nameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        role: _selectedRole!,
+      );
 
       setState(() => _isLoading = false);
 
-      // Navigate to role selection
-      Get.off(
-            () => const RoleSelectionScreen(),
-        transition: Transition.rightToLeftWithFade,
-      );
+      if (success) {
+        Get.snackbar(
+          'Success!',
+          'Account created successfully',
+          backgroundColor: AppColors.success,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+        );
+
+        // Don't navigate manually - AuthWrapper will handle it automatically
+        // The auth state change will trigger navigation based on role
+      }
     }
   }
 
@@ -80,10 +108,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
       body: Stack(
         children: [
-          // Background design
           _buildBackground(isDark),
-
-          // Main content
           SafeArea(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -92,45 +117,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 20),
-
-                  // Back button
                   _buildBackButton(isDark),
-
                   const SizedBox(height: 20),
-
-                  // Header
                   _buildHeader(isDark),
-
                   const SizedBox(height: 30),
-
-                  // Sign up form
                   _buildSignUpForm(isDark),
-
+                  const SizedBox(height: 24),
+                  _buildRoleSelection(isDark),
                   const SizedBox(height: 20),
-
-                  // Terms checkbox
                   _buildTermsCheckbox(isDark),
-
                   const SizedBox(height: 24),
-
-                  // Sign up button
                   _buildSignUpButton(isDark),
-
                   const SizedBox(height: 24),
-
-                  // Divider
                   _buildDivider(isDark),
-
                   const SizedBox(height: 24),
-
-                  // Social buttons
                   _buildSocialButtons(isDark),
-
                   const SizedBox(height: 30),
-
-                  // Sign in link
                   _buildSignInLink(isDark),
-
                   const SizedBox(height: 30),
                 ],
               ),
@@ -179,10 +182,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           color: isDark ? Colors.white : AppColors.grey900,
         ),
       ),
-    )
-        .animate()
-        .fadeIn(duration: 500.ms)
-        .slideX(begin: -0.2, end: 0);
+    ).animate().fadeIn(duration: 500.ms).slideX(begin: -0.2, end: 0);
   }
 
   Widget _buildHeader(bool isDark) {
@@ -197,13 +197,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             color: isDark ? Colors.white : AppColors.grey900,
             letterSpacing: -1,
           ),
-        )
-            .animate()
-            .fadeIn(duration: 500.ms, delay: 200.ms)
-            .slideX(begin: -0.1, end: 0),
-
+        ).animate().fadeIn(duration: 500.ms, delay: 200.ms).slideX(begin: -0.1, end: 0),
         const SizedBox(height: 8),
-
         Text(
           'Fill in your details to get started',
           style: GoogleFonts.urbanist(
@@ -211,10 +206,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             fontWeight: FontWeight.w400,
             color: AppColors.grey500,
           ),
-        )
-            .animate()
-            .fadeIn(duration: 500.ms, delay: 300.ms)
-            .slideX(begin: -0.1, end: 0),
+        ).animate().fadeIn(duration: 500.ms, delay: 300.ms).slideX(begin: -0.1, end: 0),
       ],
     );
   }
@@ -224,26 +216,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
       key: _formKey,
       child: Column(
         children: [
-          // Full Name
           CustomTextField(
             controller: _nameController,
             label: 'Full Name',
             hint: 'Enter your full name',
             prefixIcon: Iconsax.user,
             validator: (value) {
-              if (value?.isEmpty ?? true) {
-                return 'Please enter your name';
-              }
+              if (value?.isEmpty ?? true) return 'Please enter your name';
               return null;
             },
-          )
-              .animate()
-              .fadeIn(duration: 500.ms, delay: 400.ms)
-              .slideY(begin: 0.1, end: 0),
-
+          ).animate().fadeIn(duration: 500.ms, delay: 400.ms).slideY(begin: 0.1, end: 0),
           const SizedBox(height: 16),
-
-          // Email
           CustomTextField(
             controller: _emailController,
             label: 'Email',
@@ -251,22 +234,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
             prefixIcon: Iconsax.sms,
             keyboardType: TextInputType.emailAddress,
             validator: (value) {
-              if (value?.isEmpty ?? true) {
-                return 'Please enter your email';
-              }
-              if (!GetUtils.isEmail(value!)) {
-                return 'Please enter a valid email';
-              }
+              if (value?.isEmpty ?? true) return 'Please enter your email';
+              if (!GetUtils.isEmail(value!)) return 'Please enter a valid email';
               return null;
             },
-          )
-              .animate()
-              .fadeIn(duration: 500.ms, delay: 500.ms)
-              .slideY(begin: 0.1, end: 0),
-
+          ).animate().fadeIn(duration: 500.ms, delay: 500.ms).slideY(begin: 0.1, end: 0),
           const SizedBox(height: 16),
-
-          // Phone Number
           CustomTextField(
             controller: _phoneController,
             label: 'Phone Number',
@@ -274,19 +247,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
             prefixIcon: Iconsax.call,
             keyboardType: TextInputType.phone,
             validator: (value) {
-              if (value?.isEmpty ?? true) {
-                return 'Please enter your phone number';
-              }
+              if (value?.isEmpty ?? true) return 'Please enter your phone number';
               return null;
             },
-          )
-              .animate()
-              .fadeIn(duration: 500.ms, delay: 600.ms)
-              .slideY(begin: 0.1, end: 0),
-
+          ).animate().fadeIn(duration: 500.ms, delay: 600.ms).slideY(begin: 0.1, end: 0),
           const SizedBox(height: 16),
-
-          // Password
           CustomTextField(
             controller: _passwordController,
             label: 'Password',
@@ -298,27 +263,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 _obscurePassword ? Iconsax.eye_slash : Iconsax.eye,
                 color: AppColors.grey500,
               ),
-              onPressed: () {
-                setState(() => _obscurePassword = !_obscurePassword);
-              },
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ),
             validator: (value) {
-              if (value?.isEmpty ?? true) {
-                return 'Please enter a password';
-              }
-              if (value!.length < 6) {
-                return 'Password must be at least 6 characters';
-              }
+              if (value?.isEmpty ?? true) return 'Please enter a password';
+              if (value!.length < 6) return 'Password must be at least 6 characters';
               return null;
             },
-          )
-              .animate()
-              .fadeIn(duration: 500.ms, delay: 700.ms)
-              .slideY(begin: 0.1, end: 0),
-
+          ).animate().fadeIn(duration: 500.ms, delay: 700.ms).slideY(begin: 0.1, end: 0),
           const SizedBox(height: 16),
-
-          // Confirm Password
           CustomTextField(
             controller: _confirmPasswordController,
             label: 'Confirm Password',
@@ -330,24 +283,117 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 _obscureConfirmPassword ? Iconsax.eye_slash : Iconsax.eye,
                 color: AppColors.grey500,
               ),
-              onPressed: () {
-                setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
-              },
+              onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
             ),
             validator: (value) {
-              if (value?.isEmpty ?? true) {
-                return 'Please confirm your password';
-              }
-              if (value != _passwordController.text) {
-                return 'Passwords do not match';
-              }
+              if (value?.isEmpty ?? true) return 'Please confirm your password';
+              if (value != _passwordController.text) return 'Passwords do not match';
               return null;
             },
-          )
-              .animate()
-              .fadeIn(duration: 500.ms, delay: 800.ms)
-              .slideY(begin: 0.1, end: 0),
+          ).animate().fadeIn(duration: 500.ms, delay: 800.ms).slideY(begin: 0.1, end: 0),
         ],
+      ),
+    );
+  }
+
+  Widget _buildRoleSelection(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Select Your Role',
+          style: GoogleFonts.urbanist(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: isDark ? Colors.white : AppColors.grey900,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildRoleCard(
+                isDark: isDark,
+                role: UserRole.driver,
+                title: 'Driver',
+                icon: Iconsax.car,
+                description: 'Share rides & earn',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildRoleCard(
+                isDark: isDark,
+                role: UserRole.passenger,
+                title: 'Passenger',
+                icon: Iconsax.user,
+                description: 'Find rides easily',
+              ),
+            ),
+          ],
+        ),
+      ],
+    ).animate().fadeIn(duration: 500.ms, delay: 850.ms);
+  }
+
+  Widget _buildRoleCard({
+    required bool isDark,
+    required UserRole role,
+    required String title,
+    required IconData icon,
+    required String description,
+  }) {
+    final isSelected = _selectedRole == role;
+
+    return GestureDetector(
+      onTap: () => setState(() => _selectedRole = role),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primaryYellow.withOpacity(0.15)
+              : (isDark ? AppColors.darkCard : AppColors.lightCard),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? AppColors.primaryYellow : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.primaryYellow : AppColors.primaryYellow.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? AppColors.darkBackground : AppColors.primaryYellow,
+                size: 24,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: GoogleFonts.urbanist(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white : AppColors.grey900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.urbanist(
+                fontSize: 12,
+                color: AppColors.grey500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -356,9 +402,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return Row(
       children: [
         GestureDetector(
-          onTap: () {
-            setState(() => _acceptTerms = !_acceptTerms);
-          },
+          onTap: () => setState(() => _acceptTerms = !_acceptTerms),
           child: Container(
             width: 24,
             height: 24,
@@ -366,18 +410,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
               color: _acceptTerms ? AppColors.primaryYellow : Colors.transparent,
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: _acceptTerms
-                    ? AppColors.primaryYellow
-                    : AppColors.grey500,
+                color: _acceptTerms ? AppColors.primaryYellow : AppColors.grey500,
                 width: 2,
               ),
             ),
             child: _acceptTerms
-                ? const Icon(
-              Icons.check,
-              size: 16,
-              color: AppColors.darkBackground,
-            )
+                ? const Icon(Icons.check, size: 16, color: AppColors.darkBackground)
                 : null,
           ),
         ),
@@ -386,10 +424,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           child: Text.rich(
             TextSpan(
               text: 'I agree to the ',
-              style: GoogleFonts.urbanist(
-                fontSize: 14,
-                color: AppColors.grey500,
-              ),
+              style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500),
               children: [
                 TextSpan(
                   text: 'Terms of Service',
@@ -413,9 +448,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         ),
       ],
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 900.ms);
+    ).animate().fadeIn(duration: 500.ms, delay: 900.ms);
   }
 
   Widget _buildSignUpButton(bool isDark) {
@@ -427,9 +460,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primaryYellow,
           foregroundColor: AppColors.darkBackground,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 0,
         ),
         child: _isLoading
@@ -438,80 +469,41 @@ class _SignUpScreenState extends State<SignUpScreen> {
           height: 24,
           child: CircularProgressIndicator(
             strokeWidth: 2.5,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              AppColors.darkBackground,
-            ),
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.darkBackground),
           ),
         )
             : Text(
           'Create Account',
-          style: GoogleFonts.urbanist(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
+          style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700),
         ),
       ),
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 1000.ms)
-        .slideY(begin: 0.2, end: 0);
+    ).animate().fadeIn(duration: 500.ms, delay: 1000.ms).slideY(begin: 0.2, end: 0);
   }
 
   Widget _buildDivider(bool isDark) {
     return Row(
       children: [
-        Expanded(
-          child: Container(
-            height: 1,
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-          ),
-        ),
+        Expanded(child: Container(height: 1, color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'Or sign up with',
-            style: GoogleFonts.urbanist(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppColors.grey500,
-            ),
+            style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.grey500),
           ),
         ),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-          ),
-        ),
+        Expanded(child: Container(height: 1, color: isDark ? AppColors.darkBorder : AppColors.lightBorder)),
       ],
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 1100.ms);
+    ).animate().fadeIn(duration: 500.ms, delay: 1100.ms);
   }
 
   Widget _buildSocialButtons(bool isDark) {
     return Row(
       children: [
-        Expanded(
-          child: SocialButton(
-            icon: 'G',
-            label: 'Google',
-            onPressed: () {},
-          ),
-        ),
+        Expanded(child: SocialButton(icon: 'G', label: 'Google', onPressed: () {})),
         const SizedBox(width: 16),
-        Expanded(
-          child: SocialButton(
-            icon: '',
-            label: 'Apple',
-            isApple: true,
-            onPressed: () {},
-          ),
-        ),
+        Expanded(child: SocialButton(icon: '', label: 'Apple', isApple: true, onPressed: () {})),
       ],
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 1200.ms);
+    ).animate().fadeIn(duration: 500.ms, delay: 1200.ms);
   }
 
   Widget _buildSignInLink(bool isDark) {
@@ -521,10 +513,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         children: [
           Text(
             'Already have an account? ',
-            style: GoogleFonts.urbanist(
-              fontSize: 14,
-              color: AppColors.grey500,
-            ),
+            style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500),
           ),
           GestureDetector(
             onTap: () => Get.back(),
@@ -539,8 +528,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         ],
       ),
-    )
-        .animate()
-        .fadeIn(duration: 500.ms, delay: 1300.ms);
+    ).animate().fadeIn(duration: 500.ms, delay: 1300.ms);
   }
 }

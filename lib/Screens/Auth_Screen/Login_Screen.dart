@@ -41,20 +41,71 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isLoading = true);
 
-      final success = await _authService.signIn(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      try {
+        final success = await _authService.signIn(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
 
-      setState(() => _isLoading = false);
+        if (!mounted) return;
 
-      if (success && _authService.currentUser != null) {
-        // Navigate based on user role
-        if (_authService.currentUser!.role == UserRole.driver) {
-          Get.off(() => const DriverHomeScreen(), transition: Transition.fadeIn);
-        } else {
-          Get.off(() => const PassengerHomeScreen(), transition: Transition.fadeIn);
+        setState(() => _isLoading = false);
+
+        if (success) {
+          // Get the current user to check their role
+          final currentUser = _authService.currentUser;
+
+          if (currentUser != null) {
+            Get.snackbar(
+              'Success',
+              'Welcome back!',
+              backgroundColor: AppColors.success,
+              colorText: Colors.white,
+              snackPosition: SnackPosition.TOP,
+              duration: const Duration(seconds: 2),
+            );
+
+            // Navigate based on user role
+            await Future.delayed(const Duration(milliseconds: 300));
+
+            if (currentUser.role == 'driver') {
+              Get.offAll(() => const DriverHomeScreen(), transition: Transition.fadeIn);
+            } else {
+              Get.offAll(() => const PassengerHomeScreen(), transition: Transition.fadeIn);
+            }
+          } else {
+            // User data not loaded yet, wait a bit and try again
+            await Future.delayed(const Duration(milliseconds: 500));
+            final retryUser = _authService.currentUser;
+
+            if (retryUser != null) {
+              if (retryUser.role == 'driver') {
+                Get.offAll(() => const DriverHomeScreen(), transition: Transition.fadeIn);
+              } else {
+                Get.offAll(() => const PassengerHomeScreen(), transition: Transition.fadeIn);
+              }
+            } else {
+              Get.snackbar(
+                'Error',
+                'Failed to load user data. Please try again.',
+                backgroundColor: Colors.red,
+                colorText: Colors.white,
+                snackPosition: SnackPosition.TOP,
+              );
+            }
+          }
         }
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+
+        Get.snackbar(
+          'Error',
+          'Login failed: ${e.toString()}',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+        );
       }
     }
   }

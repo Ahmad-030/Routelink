@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
-import '../../../core/theme/app_theme.dart';
-
-/// ============================================
-/// RIDE REQUEST CARD
-/// Card showing passenger ride request details
-/// ============================================
+import '../../Core/Theme/App_theme.dart';
 
 class RideRequestCard extends StatelessWidget {
   final Map<String, dynamic> request;
@@ -32,14 +27,19 @@ class RideRequestCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkCard : AppColors.lightCard,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-        ),
+        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header - User info
+          // Header with user info
           Row(
             children: [
               // Avatar
@@ -52,7 +52,7 @@ class RideRequestCard extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    request['name'].toString().substring(0, 1).toUpperCase(),
+                    (request['name'] as String?)?.substring(0, 1).toUpperCase() ?? 'P',
                     style: GoogleFonts.urbanist(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -69,46 +69,40 @@ class RideRequestCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      request['name'],
+                      request['name'] ?? 'Passenger',
                       style: GoogleFonts.urbanist(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: isDark ? Colors.white : AppColors.grey900,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(
-                          Iconsax.star1,
-                          size: 14,
-                          color: AppColors.primaryYellow,
-                        ),
+                        const Icon(Iconsax.star1, color: AppColors.primaryYellow, size: 14),
                         const SizedBox(width: 4),
                         Text(
-                          '${request['rating']}',
+                          '${request['rating'] ?? 4.5}',
                           style: GoogleFonts.urbanist(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                             color: AppColors.grey500,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
                         Container(
-                          width: 4,
-                          height: 4,
-                          decoration: const BoxDecoration(
-                            color: AppColors.grey500,
-                            shape: BoxShape.circle,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.info.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          request['distance'],
-                          style: GoogleFonts.urbanist(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.grey500,
+                          child: Text(
+                            request['distance'] ?? '0 km',
+                            style: GoogleFonts.urbanist(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.info,
+                            ),
                           ),
                         ),
                       ],
@@ -117,20 +111,16 @@ class RideRequestCard extends StatelessWidget {
                 ),
               ),
 
-              // Offered fare
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryYellow.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  'Rs. ${request['offeredFare']}',
-                  style: GoogleFonts.urbanist(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primaryYellow,
+              // Chat button
+              IconButton(
+                onPressed: onChat,
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryYellow.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
                   ),
+                  child: const Icon(Iconsax.message, color: AppColors.primaryYellow, size: 20),
                 ),
               ),
             ],
@@ -142,9 +132,7 @@ class RideRequestCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isDark
-                  ? AppColors.darkBackground.withOpacity(0.5)
-                  : AppColors.grey50,
+              color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -163,12 +151,13 @@ class RideRequestCard extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        request['pickup'],
+                        request['pickup'] ?? 'Pickup location',
                         style: GoogleFonts.urbanist(
                           fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: isDark ? Colors.white : AppColors.grey900,
+                          color: isDark ? Colors.white70 : AppColors.grey700,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -178,14 +167,12 @@ class RideRequestCard extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(left: 4),
                   child: Column(
-                    children: List.generate(3, (index) {
-                      return Container(
-                        width: 2,
-                        height: 4,
-                        margin: const EdgeInsets.symmetric(vertical: 2),
-                        color: AppColors.grey500,
-                      );
-                    }),
+                    children: List.generate(2, (i) => Container(
+                      width: 2,
+                      height: 6,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      color: AppColors.grey500.withOpacity(0.5),
+                    )),
                   ),
                 ),
 
@@ -196,19 +183,20 @@ class RideRequestCard extends StatelessWidget {
                       width: 10,
                       height: 10,
                       decoration: const BoxDecoration(
-                        color: AppColors.primaryYellow,
+                        color: AppColors.error,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        request['dropoff'],
+                        request['dropoff'] ?? 'Drop-off location',
                         style: GoogleFonts.urbanist(
                           fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: isDark ? Colors.white : AppColors.grey900,
+                          color: isDark ? Colors.white70 : AppColors.grey700,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -219,77 +207,64 @@ class RideRequestCard extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // Action buttons
+          // Fare and action buttons
           Row(
             children: [
-              // Reject button
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onReject,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.error,
-                    side: const BorderSide(color: AppColors.error),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+              // Offered fare
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Offered Fare',
+                    style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500),
                   ),
-                  child: Text(
-                    'Decline',
+                  Text(
+                    'Rs. ${request['offeredFare'] ?? 0}',
                     style: GoogleFonts.urbanist(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryYellow,
                     ),
                   ),
-                ),
+                ],
               ),
 
-              const SizedBox(width: 12),
+              const Spacer(),
 
-              // Chat button
-              Container(
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkElevated : AppColors.grey100,
-                  borderRadius: BorderRadius.circular(12),
+              // Reject button
+              OutlinedButton(
+                onPressed: onReject,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  side: const BorderSide(color: AppColors.error),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: IconButton(
-                  onPressed: onChat,
-                  icon: Icon(
-                    Iconsax.message,
-                    color: isDark ? Colors.white : AppColors.grey900,
+                child: Text(
+                  'Decline',
+                  style: GoogleFonts.urbanist(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.error,
                   ),
                 ),
               ),
-
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
 
               // Accept button
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: onAccept,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryYellow,
-                    foregroundColor: AppColors.darkBackground,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Iconsax.tick_circle, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Accept',
-                        style: GoogleFonts.urbanist(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+              ElevatedButton(
+                onPressed: onAccept,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: Text(
+                  'Accept',
+                  style: GoogleFonts.urbanist(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
                   ),
                 ),
               ),
