@@ -37,6 +37,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _acceptTerms = false;
   UserRole? _selectedRole;
   double _passwordStrength = 0.0;
+  String _passwordStrengthLabel = '';
 
   @override
   void initState() {
@@ -56,46 +57,60 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _updatePasswordStrength() {
     final password = _passwordController.text;
-    double strength = 0.0;
 
     if (password.isEmpty) {
-      setState(() => _passwordStrength = 0.0);
+      setState(() {
+        _passwordStrength = 0.0;
+        _passwordStrengthLabel = '';
+      });
       return;
     }
 
-    // Length check
-    if (password.length >= 6) strength += 0.2;
-    if (password.length >= 8) strength += 0.1;
-    if (password.length >= 12) strength += 0.1;
+    int criteriaCount = 0;
+
+    // Length criteria (most important)
+    if (password.length >= 8) criteriaCount++;
 
     // Has lowercase
-    if (password.contains(RegExp(r'[a-z]'))) strength += 0.15;
+    if (password.contains(RegExp(r'[a-z]'))) criteriaCount++;
 
     // Has uppercase
-    if (password.contains(RegExp(r'[A-Z]'))) strength += 0.15;
+    if (password.contains(RegExp(r'[A-Z]'))) criteriaCount++;
 
     // Has numbers
-    if (password.contains(RegExp(r'[0-9]'))) strength += 0.15;
+    if (password.contains(RegExp(r'[0-9]'))) criteriaCount++;
 
     // Has special characters
-    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength += 0.15;
+    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;/]'))) criteriaCount++;
 
-    setState(() => _passwordStrength = strength.clamp(0.0, 1.0));
-  }
+    // Calculate strength based on criteria met
+    double strength = criteriaCount / 5.0;
+    String label = '';
 
-  String _getPasswordStrengthText() {
-    if (_passwordStrength == 0.0) return '';
-    if (_passwordStrength < 0.3) return 'Weak';
-    if (_passwordStrength < 0.6) return 'Fair';
-    if (_passwordStrength < 0.8) return 'Good';
-    return 'Strong';
+    if (criteriaCount == 1) {
+      label = 'Weak';
+    } else if (criteriaCount == 2) {
+      label = 'Fair';
+    } else if (criteriaCount == 3) {
+      label = 'Good';
+    } else if (criteriaCount == 4) {
+      label = 'Strong';
+    } else if (criteriaCount == 5) {
+      label = 'Very Strong';
+    }
+
+    setState(() {
+      _passwordStrength = strength;
+      _passwordStrengthLabel = label;
+    });
   }
 
   Color _getPasswordStrengthColor() {
-    if (_passwordStrength < 0.3) return Colors.red;
-    if (_passwordStrength < 0.6) return Colors.orange;
-    if (_passwordStrength < 0.8) return Colors.yellow;
-    return Colors.green;
+    if (_passwordStrength <= 0.2) return const Color(0xFFFF3B30); // Red
+    if (_passwordStrength <= 0.4) return const Color(0xFFFF9500); // Orange
+    if (_passwordStrength <= 0.6) return const Color(0xFFFFCC00); // Yellow-Orange
+    if (_passwordStrength <= 0.8) return AppColors.primaryYellow; // Yellow
+    return const Color(0xFF34C759); // Green when Very Strong (all 5 criteria met)
   }
 
   void _handleSignUp() async {
@@ -353,61 +368,98 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildPasswordStrengthIndicator(bool isDark) {
     return Column(
       children: [
+        // Progress bar
+        Stack(
+          children: [
+            // Background bar
+            Container(
+              height: 8,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? AppColors.darkBorder.withOpacity(0.3)
+                    : AppColors.lightBorder.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            // Filled bar with animation
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOut,
+              height: 8,
+              width: MediaQuery.of(context).size.width * _passwordStrength * 0.87, // 0.87 accounts for padding
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    _getPasswordStrengthColor(),
+                    _getPasswordStrengthColor().withOpacity(0.8),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: _passwordStrength > 0.6
+                    ? [
+                  BoxShadow(
+                    color: _getPasswordStrengthColor().withOpacity(0.4),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ]
+                    : [],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Labels row
         Row(
           children: [
             Text(
               'Weak',
               style: GoogleFonts.urbanist(
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: AppColors.grey500,
+                color: AppColors.grey500.withOpacity(0.7),
               ),
             ),
             const Spacer(),
-            Text(
-              _getPasswordStrengthText(),
-              style: GoogleFonts.urbanist(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: _getPasswordStrengthColor(),
+            if (_passwordStrengthLabel.isNotEmpty)
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: 1.0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getPasswordStrengthColor().withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _getPasswordStrengthColor().withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    _passwordStrengthLabel,
+                    style: GoogleFonts.urbanist(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: _getPasswordStrengthColor(),
+                    ),
+                  ),
+                ),
               ),
-            ),
             const Spacer(),
             Text(
               'Strong',
               style: GoogleFonts.urbanist(
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: AppColors.grey500,
+                color: _passwordStrength >= 1.0
+                    ? const Color(0xFF34C759) // Green when Very Strong
+                    : _passwordStrength >= 0.8
+                    ? AppColors.primaryYellow // Yellow when Strong
+                    : AppColors.grey500.withOpacity(0.7),
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            height: 6,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.darkCard : AppColors.lightCard,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              width: double.infinity,
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                widthFactor: _passwordStrength,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _getPasswordStrengthColor(),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-          ),
         ),
       ],
     );
