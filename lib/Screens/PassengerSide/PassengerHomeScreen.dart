@@ -93,7 +93,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
   RideModel? _selectedRide;
 
   // API Key - Replace with your key
-  static const String _googleMapsApiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
+  static const String _googleMapsApiKey = 'AIzaSyBf_uxaitv3XvVHTSPZHGa20C6q6U8IkkE';
 
   // Dark map style
   String? _darkMapStyle;
