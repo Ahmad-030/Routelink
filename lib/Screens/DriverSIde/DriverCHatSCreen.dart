@@ -102,7 +102,8 @@ class DriverChatsScreen extends StatelessWidget {
   Widget _buildChatCard(ChatModel chat, String userName, bool isDark, int index) {
     return GestureDetector(
       onTap: () => Get.to(
-            () => ChatScreen(userName: userName, isDriver: true),
+            () => ChatScreen
+              (userName: userName, isDriver: true, recipientId: null,),
         transition: Transition.rightToLeftWithFade,
       ),
       child: Container(

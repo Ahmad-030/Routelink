@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:routelink/Core/Theme/App_theme.dart';
 import '../../Core/App_Constants.dart';
-import '../Onboarding_Screen/Onboarding_Screen.dart';
+import '../../main.dart'; // Import to access AuthWrapper
 
 
 /// ============================================
@@ -46,12 +46,13 @@ class _SplashScreenState extends State<SplashScreen>
     _carController.forward();
 
     await Future.delayed(const Duration(milliseconds: 2500));
-    _navigateToOnboarding();
+    _navigateNext();
   }
 
-  void _navigateToOnboarding() {
+  void _navigateNext() {
+    // Navigate to AuthWrapper which handles authentication routing
     Get.off(
-          () => const OnboardingScreen(),
+          () => const AuthWrapper(),
       transition: Transition.fadeIn,
       duration: const Duration(milliseconds: 800),
     );

@@ -937,7 +937,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
                 color: AppColors.info,
                 onTap: () => Get.to(() => ChatScreen(
                   userName: otherUserName ?? 'User',
-                  isDriver: isDriver,
+                  isDriver: isDriver, recipientId: null,
                 )),
               ),
               const SizedBox(width: 10),

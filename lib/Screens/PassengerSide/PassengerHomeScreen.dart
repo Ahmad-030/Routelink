@@ -98,10 +98,14 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
   // Dark map style
   String? _darkMapStyle;
 
+  // Custom marker icons
+  BitmapDescriptor? _driverIcon;
+
   @override
   void initState() {
     super.initState();
     _loadMapStyle();
+    _loadCustomMarkers();
     _getCurrentLocation();
     _listenToAvailableRides();
     _checkActiveRequest();
@@ -135,6 +139,10 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
       {"featureType": "water", "elementType": "labels.text.fill", "stylers": [{"color": "#3d3d3d"}]}
     ]
     ''';
+  }
+
+  Future<void> _loadCustomMarkers() async {
+    _driverIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
   }
 
   Future<void> _getCurrentLocation() async {
@@ -260,7 +268,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
     });
   }
 
-  void _updateMapMarkers() async {
+  void _updateMapMarkers() {
     _markers.clear();
     _polylines.clear();
 
@@ -276,60 +284,52 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
       );
     }
 
-    // Driver markers and routes
+    // ONLY show driver markers at route START points
     for (int i = 0; i < _availableRides.length; i++) {
       final ride = _availableRides[i];
       final isSelected = _selectedRide?.id == ride.id;
 
-      // Driver start marker
+      // Driver start marker ONLY
       _markers.add(
         Marker(
           markerId: MarkerId('driver_${ride.id}'),
           position: LatLng(ride.startLocation.latitude, ride.startLocation.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            isSelected ? BitmapDescriptor.hueYellow : BitmapDescriptor.hueOrange,
-          ),
+          icon: isSelected
+              ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueYellow)
+              : BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
           infoWindow: InfoWindow(
             title: ride.driverName ?? 'Driver',
-            snippet: 'Rs.${ride.suggestedFare ?? 0} • ${ride.availableSeats} seats',
+            snippet: 'Tap for details',
           ),
           onTap: () => _onDriverMarkerTap(ride),
         ),
       );
 
-      // Destination marker
-      _markers.add(
-        Marker(
-          markerId: MarkerId('destination_${ride.id}'),
-          position: LatLng(ride.endLocation.latitude, ride.endLocation.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          infoWindow: InfoWindow(
-            title: 'Drop-off',
-            snippet: ride.endLocation.address,
-          ),
-        ),
-      );
-
-      // Route polyline
+      // Only show route polyline for selected ride
       if (isSelected) {
-        await _getRouteForRide(ride);
-      } else {
-        _polylines.add(
-          Polyline(
-            polylineId: PolylineId('route_${ride.id}'),
-            points: [
-              LatLng(ride.startLocation.latitude, ride.startLocation.longitude),
-              LatLng(ride.endLocation.latitude, ride.endLocation.longitude),
-            ],
-            color: Colors.grey.withValues(alpha: 0.5),
-            width: 3,
-            patterns: [PatternItem.dash(10), PatternItem.gap(10)],
-          ),
-        );
+        _showRouteForSelectedRide(ride);
       }
     }
 
     setState(() {});
+  }
+
+  Future<void> _showRouteForSelectedRide(RideModel ride) async {
+    // Add destination marker for selected ride
+    _markers.add(
+      Marker(
+        markerId: MarkerId('destination_${ride.id}'),
+        position: LatLng(ride.endLocation.latitude, ride.endLocation.longitude),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(
+          title: 'Drop-off',
+          snippet: ride.endLocation.address,
+        ),
+      ),
+    );
+
+    // Get and show route
+    await _getRouteForRide(ride);
   }
 
   Future<void> _getRouteForRide(RideModel ride) async {
@@ -351,23 +351,40 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
           final polylinePoints = data['routes'][0]['overview_polyline']['points'];
           final routePoints = _decodePolyline(polylinePoints);
 
-          _polylines.add(
-            Polyline(
-              polylineId: PolylineId('route_${ride.id}'),
-              points: routePoints,
-              color: AppColors.primaryYellow,
-              width: 5,
-              patterns: const [],
-              startCap: Cap.roundCap,
-              endCap: Cap.roundCap,
-            ),
-          );
+          setState(() {
+            _polylines.add(
+              Polyline(
+                polylineId: PolylineId('route_${ride.id}'),
+                points: routePoints,
+                color: AppColors.primaryYellow,
+                width: 5,
+                patterns: const [],
+                startCap: Cap.roundCap,
+                endCap: Cap.roundCap,
+              ),
+            );
+          });
 
           _fitBoundsForRoute(routePoints);
         }
       }
     } catch (e) {
       debugPrint('Error getting route: $e');
+      // Fallback: show straight line
+      setState(() {
+        _polylines.add(
+          Polyline(
+            polylineId: PolylineId('route_${ride.id}'),
+            points: [
+              LatLng(ride.startLocation.latitude, ride.startLocation.longitude),
+              LatLng(ride.endLocation.latitude, ride.endLocation.longitude),
+            ],
+            color: AppColors.primaryYellow,
+            width: 4,
+            patterns: [PatternItem.dash(15), PatternItem.gap(10)],
+          ),
+        );
+      });
     }
   }
 
@@ -432,7 +449,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
   void _onDriverMarkerTap(RideModel ride) {
     setState(() => _selectedRide = ride);
     _updateMapMarkers();
-    _showOfferFareSheet(ride);
+    _showRideDetailsBottomSheet(ride);
   }
 
   void _centerOnCurrentLocation() {
@@ -457,6 +474,274 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
 
       return start.contains(query) || end.contains(query) || driver.contains(query);
     }).toList();
+  }
+
+  void _showRideDetailsBottomSheet(RideModel ride) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.grey500,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Driver Info
+            Row(
+              children: [
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Center(
+                    child: Text(
+                      (ride.driverName ?? 'D').substring(0, 1).toUpperCase(),
+                      style: GoogleFonts.urbanist(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.darkBackground,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ride.driverName ?? 'Driver',
+                        style: GoogleFonts.urbanist(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : AppColors.grey900,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          const Icon(Iconsax.star1, size: 14, color: AppColors.primaryYellow),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${ride.driverRating ?? 4.8}',
+                            style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '${ride.carDetails.name} • ${ride.carDetails.number}',
+                            style: GoogleFonts.urbanist(fontSize: 13, color: AppColors.grey500),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pop(context);
+                    Get.to(() => ChatScreen(
+                      userName: ride.driverName ?? 'Driver',
+                      isDriver: false,
+                      recipientId: ride.driverId, // Add driver ID here
+                    ));
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.info.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Iconsax.message, color: AppColors.info, size: 22),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Route Info
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkCard : AppColors.grey50,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Column(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: const BoxDecoration(
+                              color: AppColors.success,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Container(width: 2, height: 30, color: AppColors.grey400),
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: const BoxDecoration(
+                              color: AppColors.error,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'From',
+                              style: GoogleFonts.urbanist(fontSize: 11, color: AppColors.grey500),
+                            ),
+                            Text(
+                              ride.startLocation.address,
+                              style: GoogleFonts.urbanist(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : AppColors.grey900,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'To',
+                              style: GoogleFonts.urbanist(fontSize: 11, color: AppColors.grey500),
+                            ),
+                            Text(
+                              ride.endLocation.address,
+                              style: GoogleFonts.urbanist(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : AppColors.grey900,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Stats Row
+            Row(
+              children: [
+                _buildStatChip(Iconsax.user, '${ride.availableSeats} seats', isDark),
+                const SizedBox(width: 10),
+                _buildStatChip(Iconsax.location, '${ride.distance?.toStringAsFixed(1) ?? '0'} km', isDark),
+                const SizedBox(width: 10),
+                _buildStatChip(Iconsax.clock, '${ride.estimatedDuration ?? 15} min', isDark),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Fare and Action
+            Row(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Suggested Fare',
+                      style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500),
+                    ),
+                    Text(
+                      'Rs. ${ride.suggestedFare ?? 200}',
+                      style: GoogleFonts.urbanist(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryYellow,
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showOfferFareSheet(ride);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryYellow,
+                    foregroundColor: AppColors.darkBackground,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Iconsax.send_1, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Request Ride',
+                        style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatChip(IconData icon, String value, bool isDark) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkCard : AppColors.grey100,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: AppColors.grey500),
+            const SizedBox(width: 6),
+            Text(
+              value,
+              style: GoogleFonts.urbanist(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : AppColors.grey900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showOfferFareSheet(RideModel ride) {
@@ -525,6 +810,10 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
       };
 
       await FirebaseFirestore.instance.collection('ride_requests').add(requestData);
+
+      // Clear selection
+      setState(() => _selectedRide = null);
+      _updateMapMarkers();
 
       Get.snackbar(
         'Request Sent! 🚗',
@@ -601,8 +890,11 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
       rotateGesturesEnabled: true,
       tiltGesturesEnabled: true,
       onTap: (latLng) {
-        setState(() => _selectedRide = null);
-        _updateMapMarkers();
+        // Clear selection when tapping on map
+        if (_selectedRide != null) {
+          setState(() => _selectedRide = null);
+          _updateMapMarkers();
+        }
       },
     );
   }
@@ -620,7 +912,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
               decoration: BoxDecoration(
                 color: isDark ? AppColors.darkCard : AppColors.lightCard,
                 borderRadius: BorderRadius.circular(14),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
               ),
               child: Row(
                 children: [
@@ -652,7 +944,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
               decoration: BoxDecoration(
                 color: isDark ? AppColors.darkCard : AppColors.lightCard,
                 borderRadius: BorderRadius.circular(30),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
               ),
               child: Row(
                 children: [
@@ -666,7 +958,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${_availableRides.length} rides',
+                    '${_availableRides.length} drivers',
                     style: GoogleFonts.urbanist(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -683,7 +975,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
               decoration: BoxDecoration(
                 color: AppColors.primaryYellow,
                 borderRadius: BorderRadius.circular(14),
-                boxShadow: [BoxShadow(color: AppColors.primaryYellow.withValues(alpha: 0.3), blurRadius: 10)],
+                boxShadow: [BoxShadow(color: AppColors.primaryYellow.withOpacity(0.3), blurRadius: 10)],
               ),
               child: Center(
                 child: Text(
@@ -712,7 +1004,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkCard : AppColors.lightCard,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
         ),
         child: Row(
           children: [
@@ -762,14 +1054,14 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [AppColors.primaryYellow, AppColors.goldenYellow]),
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: AppColors.primaryYellow.withValues(alpha: 0.4), blurRadius: 15, spreadRadius: 2)],
+            boxShadow: [BoxShadow(color: AppColors.primaryYellow.withOpacity(0.4), blurRadius: 15, spreadRadius: 2)],
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.darkBackground.withValues(alpha: 0.2),
+                  color: AppColors.darkBackground.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Iconsax.car, color: AppColors.darkBackground, size: 24),
@@ -791,7 +1083,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
                       'Driver: ${ride.driverName ?? 'Unknown'}',
                       style: GoogleFonts.urbanist(
                         fontSize: 13,
-                        color: AppColors.darkBackground.withValues(alpha: 0.7),
+                        color: AppColors.darkBackground.withOpacity(0.7),
                       ),
                     ),
                   ],
@@ -815,7 +1107,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
         decoration: BoxDecoration(
           color: AppColors.info,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [BoxShadow(color: AppColors.info.withValues(alpha: 0.3), blurRadius: 10)],
+          boxShadow: [BoxShadow(color: AppColors.info.withOpacity(0.3), blurRadius: 10)],
         ),
         child: Row(
           children: [
@@ -869,7 +1161,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
               decoration: BoxDecoration(
                 color: isDark ? AppColors.darkCard : AppColors.lightCard,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8)],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
               ),
               child: const Icon(Iconsax.gps, color: AppColors.primaryYellow, size: 22),
             ),
@@ -877,7 +1169,10 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
           const SizedBox(height: 10),
           GestureDetector(
             onTap: () {
-              setState(() => _isLoadingRides = true);
+              setState(() {
+                _isLoadingRides = true;
+                _selectedRide = null;
+              });
               _listenToAvailableRides();
             },
             child: Container(
@@ -885,7 +1180,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
               decoration: BoxDecoration(
                 color: isDark ? AppColors.darkCard : AppColors.lightCard,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8)],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
               ),
               child: const Icon(Iconsax.refresh, color: AppColors.grey500, size: 22),
             ),
@@ -907,7 +1202,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
           decoration: BoxDecoration(
             color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, -5))],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))],
           ),
           child: Column(
             children: [
@@ -922,7 +1217,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
                 child: Row(
                   children: [
                     Text(
-                      'Available Rides',
+                      'Available Drivers',
                       style: GoogleFonts.urbanist(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
@@ -947,7 +1242,7 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
                     ),
                     const Spacer(),
                     Text(
-                      'Tap marker on map',
+                      'Tap marker for details',
                       style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500),
                     ),
                   ],
@@ -975,10 +1270,14 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
                       onTap: () {
                         setState(() => _selectedRide = ride);
                         _updateMapMarkers();
-                        _showOfferFareSheet(ride);
+                        _showRideDetailsBottomSheet(ride);
                       },
                       onChat: () => Get.to(
-                            () => ChatScreen(userName: ride.driverName ?? 'Driver', isDriver: false),
+                            () => ChatScreen(
+                          userName: ride.driverName ?? 'Driver',
+                          isDriver: false,
+                          recipientId: ride.driverId, // Add driver ID here
+                        ),
                         transition: Transition.rightToLeftWithFade,
                       ),
                     ).animate().fadeIn(duration: 400.ms, delay: (index * 100).ms).slideX(begin: 0.1, end: 0);
@@ -1000,14 +1299,14 @@ class _PassengerHomeContentState extends State<_PassengerHomeContent> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.primaryYellow.withValues(alpha: 0.15),
+              color: AppColors.primaryYellow.withOpacity(0.15),
               shape: BoxShape.circle,
             ),
             child: const Icon(Iconsax.car, size: 40, color: AppColors.primaryYellow),
           ),
           const SizedBox(height: 16),
           Text(
-            'No Rides Available',
+            'No Drivers Available',
             style: GoogleFonts.urbanist(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -1061,179 +1360,106 @@ class _RideCard extends StatelessWidget {
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected
-              ? [BoxShadow(color: AppColors.primaryYellow.withValues(alpha: 0.2), blurRadius: 10)]
+              ? [BoxShadow(color: AppColors.primaryYellow.withOpacity(0.2), blurRadius: 10)]
               : null,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            // Header
-            Row(
-              children: [
-                Stack(
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        gradient: AppColors.primaryGradient,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Center(
-                        child: Text(
-                          (ride.driverName ?? 'D').substring(0, 1).toUpperCase(),
-                          style: GoogleFonts.urbanist(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.darkBackground,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: -2,
-                      right: -2,
-                      child: Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Iconsax.car, size: 10, color: AppColors.primaryYellow),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              ride.driverName ?? 'Driver',
-                              style: GoogleFonts.urbanist(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? Colors.white : AppColors.grey900,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryYellow.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Iconsax.star1, size: 10, color: AppColors.primaryYellow),
-                                const SizedBox(width: 2),
-                                Text(
-                                  '4.8',
-                                  style: GoogleFonts.urbanist(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.primaryYellow,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        '${ride.carDetails.name} • ${ride.carDetails.number}',
-                        style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500),
-                      ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: onChat,
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isDark ? AppColors.darkElevated : AppColors.grey100,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(Iconsax.message, color: isDark ? Colors.white : AppColors.grey700, size: 18),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Route
+            // Driver Avatar
             Container(
-              padding: const EdgeInsets.all(10),
+              width: 50,
+              height: 50,
               decoration: BoxDecoration(
-                color: isDark ? AppColors.darkBackground.withValues(alpha: 0.5) : AppColors.grey50,
-                borderRadius: BorderRadius.circular(10),
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Row(
+              child: Center(
+                child: Text(
+                  (ride.driverName ?? 'D').substring(0, 1).toUpperCase(),
+                  style: GoogleFonts.urbanist(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.darkBackground,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
+                  Row(
                     children: [
-                      Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle)),
-                      Container(width: 1, height: 20, color: AppColors.grey400),
-                      Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.error, shape: BoxShape.circle)),
+                      Text(
+                        ride.driverName ?? 'Driver',
+                        style: GoogleFonts.urbanist(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : AppColors.grey900,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryYellow.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Iconsax.star1, size: 10, color: AppColors.primaryYellow),
+                            const SizedBox(width: 2),
+                            Text(
+                              '${ride.driverRating ?? 4.8}',
+                              style: GoogleFonts.urbanist(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primaryYellow,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          ride.startLocation.address,
-                          style: GoogleFonts.urbanist(fontSize: 12, color: isDark ? Colors.white : AppColors.grey900),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          ride.endLocation.address,
-                          style: GoogleFonts.urbanist(fontSize: 12, color: isDark ? Colors.white : AppColors.grey900),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${ride.startLocation.address.split(',').first} → ${ride.endLocation.address.split(',').first}',
+                    style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _buildMiniStat(Iconsax.user, '${ride.availableSeats}', isDark),
+                      const SizedBox(width: 12),
+                      _buildMiniStat(Iconsax.location, '${ride.distance?.toStringAsFixed(1) ?? '0'} km', isDark),
+                    ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
 
-            // Stats
-            Row(
-              children: [
-                _buildStat(Iconsax.user, '${ride.availableSeats}', isDark),
-                const SizedBox(width: 16),
-                _buildStat(Iconsax.location, '${ride.distance?.toStringAsFixed(1) ?? '0'} km', isDark),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryYellow,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Rs. ${ride.suggestedFare ?? 0}',
-                    style: GoogleFonts.urbanist(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.darkBackground,
-                    ),
-                  ),
+            // Fare
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.primaryYellow,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'Rs.${ride.suggestedFare ?? 0}',
+                style: GoogleFonts.urbanist(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.darkBackground,
                 ),
-              ],
+              ),
             ),
           ],
         ),
@@ -1241,15 +1467,15 @@ class _RideCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStat(IconData icon, String value, bool isDark) {
+  Widget _buildMiniStat(IconData icon, String value, bool isDark) {
     return Row(
       children: [
-        Icon(icon, size: 14, color: AppColors.grey500),
+        Icon(icon, size: 12, color: AppColors.grey500),
         const SizedBox(width: 4),
         Text(
           value,
           style: GoogleFonts.urbanist(
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: isDark ? Colors.white70 : AppColors.grey700,
           ),

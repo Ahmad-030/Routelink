@@ -32,7 +32,7 @@ class MyApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system,
-      home: const AuthWrapper(),
+      home: const SplashScreen(), // Always start with splash screen
     );
   }
 }
@@ -50,7 +50,7 @@ class AuthWrapper extends StatelessWidget {
 
       // Case 1: No user authenticated - show onboarding
       if (firebaseUser == null) {
-        return const SplashScreen();
+        return const OnboardingScreen();
       }
 
       // Case 2: User authenticated but data not loaded yet - show loading

@@ -11,6 +11,7 @@ import 'package:routelink/Screens/DriverSIde/DriverCHatSCreen.dart';
 import 'package:routelink/Screens/DriverSIde/DriverRIdeHistory.dart';
 import 'package:routelink/Screens/DriverSIde/DriverROuteScreen.dart';
 import 'package:routelink/Screens/DriverSIde/DriverSetting_Screen.dart';
+import 'package:routelink/Screens/PassengerSide/RideRequestcard.dart';
 import '../../Core/Theme/App_theme.dart';
 import '../../Models/Ride_model.dart';
 import '../../Models/Ride_request_model.dart';
@@ -951,10 +952,11 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                           },
                           onAccept: () => _acceptRequest(request),
                           onReject: () => _rejectRequest(request.id),
-                          onChat: () => Get.to(() => ChatScreen(
-                            userName: request.passengerName,
-                            isDriver: true,
-                          )),
+                          onChat: () =>  Get.to(() => ChatScreen(
+                          userName: request.passengerName,
+                          isDriver: true,
+                          recipientId: request.passengerId, // Add passenger ID here
+                        )),
                         ).animate()
                             .fadeIn(duration: 400.ms, delay: (index * 100).ms)
                             .slideX(begin: 0.1, end: 0);

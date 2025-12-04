@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:routelink/Core/Theme/App_theme.dart';
 
 /// ============================================
 /// CHAT SCREEN
@@ -16,7 +16,7 @@ class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
     required this.userName,
-    this.isDriver = false,
+    this.isDriver = false, required recipientId,
   });
 
   @override

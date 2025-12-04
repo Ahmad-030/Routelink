@@ -36,6 +36,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _isLoading = false;
   bool _acceptTerms = false;
   UserRole? _selectedRole;
+  double _passwordStrength = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordController.addListener(_updatePasswordStrength);
+  }
 
   @override
   void dispose() {
@@ -47,7 +54,49 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  // In your SignUpScreen, update the _handleSignUp method:
+  void _updatePasswordStrength() {
+    final password = _passwordController.text;
+    double strength = 0.0;
+
+    if (password.isEmpty) {
+      setState(() => _passwordStrength = 0.0);
+      return;
+    }
+
+    // Length check
+    if (password.length >= 6) strength += 0.2;
+    if (password.length >= 8) strength += 0.1;
+    if (password.length >= 12) strength += 0.1;
+
+    // Has lowercase
+    if (password.contains(RegExp(r'[a-z]'))) strength += 0.15;
+
+    // Has uppercase
+    if (password.contains(RegExp(r'[A-Z]'))) strength += 0.15;
+
+    // Has numbers
+    if (password.contains(RegExp(r'[0-9]'))) strength += 0.15;
+
+    // Has special characters
+    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength += 0.15;
+
+    setState(() => _passwordStrength = strength.clamp(0.0, 1.0));
+  }
+
+  String _getPasswordStrengthText() {
+    if (_passwordStrength == 0.0) return '';
+    if (_passwordStrength < 0.3) return 'Weak';
+    if (_passwordStrength < 0.6) return 'Fair';
+    if (_passwordStrength < 0.8) return 'Good';
+    return 'Strong';
+  }
+
+  Color _getPasswordStrengthColor() {
+    if (_passwordStrength < 0.3) return Colors.red;
+    if (_passwordStrength < 0.6) return Colors.orange;
+    if (_passwordStrength < 0.8) return Colors.yellow;
+    return Colors.green;
+  }
 
   void _handleSignUp() async {
     if (_formKey.currentState?.validate() ?? false) {
@@ -93,9 +142,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
           colorText: Colors.white,
           snackPosition: SnackPosition.TOP,
         );
-
-        // Don't navigate manually - AuthWrapper will handle it automatically
-        // The auth state change will trigger navigation based on role
       }
     }
   }
@@ -252,24 +298,32 @@ class _SignUpScreenState extends State<SignUpScreen> {
             },
           ).animate().fadeIn(duration: 500.ms, delay: 600.ms).slideY(begin: 0.1, end: 0),
           const SizedBox(height: 16),
-          CustomTextField(
-            controller: _passwordController,
-            label: 'Password',
-            hint: 'Create a password',
-            prefixIcon: Iconsax.lock,
-            obscureText: _obscurePassword,
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword ? Iconsax.eye_slash : Iconsax.eye,
-                color: AppColors.grey500,
+          Column(
+            children: [
+              CustomTextField(
+                controller: _passwordController,
+                label: 'Password',
+                hint: 'Create a password',
+                prefixIcon: Iconsax.lock,
+                obscureText: _obscurePassword,
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscurePassword ? Iconsax.eye_slash : Iconsax.eye,
+                    color: AppColors.grey500,
+                  ),
+                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                ),
+                validator: (value) {
+                  if (value?.isEmpty ?? true) return 'Please enter a password';
+                  if (value!.length < 6) return 'Password must be at least 6 characters';
+                  return null;
+                },
               ),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-            ),
-            validator: (value) {
-              if (value?.isEmpty ?? true) return 'Please enter a password';
-              if (value!.length < 6) return 'Password must be at least 6 characters';
-              return null;
-            },
+              if (_passwordController.text.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildPasswordStrengthIndicator(isDark),
+              ],
+            ],
           ).animate().fadeIn(duration: 500.ms, delay: 700.ms).slideY(begin: 0.1, end: 0),
           const SizedBox(height: 16),
           CustomTextField(
@@ -293,6 +347,69 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ).animate().fadeIn(duration: 500.ms, delay: 800.ms).slideY(begin: 0.1, end: 0),
         ],
       ),
+    );
+  }
+
+  Widget _buildPasswordStrengthIndicator(bool isDark) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Text(
+              'Weak',
+              style: GoogleFonts.urbanist(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.grey500,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              _getPasswordStrengthText(),
+              style: GoogleFonts.urbanist(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _getPasswordStrengthColor(),
+              ),
+            ),
+            const Spacer(),
+            Text(
+              'Strong',
+              style: GoogleFonts.urbanist(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.grey500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            height: 6,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkCard : AppColors.lightCard,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: double.infinity,
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: _passwordStrength,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _getPasswordStrengthColor(),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

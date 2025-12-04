@@ -5,7 +5,7 @@ import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:routelink/Core/Theme/App_theme.dart';
 import '../../Services/Firebase Auth.dart';
 import '../Chat/Chat_Screen.dart';
 
@@ -134,7 +134,7 @@ class _PassengerChatsScreenState extends State<PassengerChatsScreen> {
               onTap: () => Get.to(
                     () => ChatScreen(
                   userName: chat.otherUserName,
-                  isDriver: false,
+                  isDriver: false, recipientId: null,
                 ),
                 transition: Transition.rightToLeftWithFade,
               ),
