@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:routelink/Screens/Onboarding_Screen/Onboarding_Screen.dart';
+import 'package:routelink/Screens/Splash_Screen/SplashScreen.dart';
 import 'Services/Firebase Auth.dart';
 import 'Core/Theme/App_theme.dart';
 import 'Screens/DriverSIde/Driver_homeScreen.dart';
@@ -49,7 +50,7 @@ class AuthWrapper extends StatelessWidget {
 
       // Case 1: No user authenticated - show onboarding
       if (firebaseUser == null) {
-        return const OnboardingScreen();
+        return const SplashScreen();
       }
 
       // Case 2: User authenticated but data not loaded yet - show loading

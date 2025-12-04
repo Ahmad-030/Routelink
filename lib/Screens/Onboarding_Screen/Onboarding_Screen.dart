@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:routelink/Core/Theme/App_theme.dart';
 import 'package:slide_to_act/slide_to_act.dart';
-import '../../../core/theme/app_theme.dart';
 
 import '../Auth_Screen/Login_Screen.dart';
 
@@ -54,6 +54,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     setState(() {
       _currentPage = page;
     });
+  }
+
+  void _skipToLastPage() {
+    _pageController.animateToPage(
+      _pages.length - 1,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
   }
 
   void _navigateToAuth() {
@@ -143,7 +151,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton(
-            onPressed: _navigateToAuth,
+            onPressed: _skipToLastPage, // Changed from _navigateToAuth
             child: Text(
               'Skip',
               style: GoogleFonts.urbanist(
