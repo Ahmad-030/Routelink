@@ -54,6 +54,7 @@ dependencies:
   uuid: ^4.3.3
   url_launcher: ^6.2.4
   permission_handler: ^11.3.0
+  http: ^1.6.0
 
   # Chat UI
   dash_chat_2: ^0.0.19

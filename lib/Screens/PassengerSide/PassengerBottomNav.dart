@@ -4,8 +4,8 @@ import 'package:iconsax/iconsax.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// ============================================
-/// PASSENGER BOTTOM NAVIGATION BAR
-/// Custom styled bottom nav for passengers
+/// PASSENGER BOTTOM NAVIGATION
+/// Custom bottom nav bar for passenger
 /// ============================================
 
 class PassengerBottomNav extends StatelessWidget {
@@ -23,7 +23,12 @@ class PassengerBottomNav extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).padding.bottom + 8,
+        top: 12,
+        left: 16,
+        right: 16,
+      ),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         boxShadow: [
@@ -34,67 +39,75 @@ class PassengerBottomNav extends StatelessWidget {
           ),
         ],
       ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(
-              index: 0,
-              icon: Iconsax.home_2,
-              activeIcon: Iconsax.home_25,
-              label: 'Home',
-              isDark: isDark,
-            ),
-            _buildNavItem(
-              index: 1,
-              icon: Iconsax.discover,
-              activeIcon: Iconsax.discover5,
-              label: 'Explore',
-              isDark: isDark,
-            ),
-            _buildNavItem(
-              index: 2,
-              icon: Iconsax.message,
-              activeIcon: Iconsax.message5,
-              label: 'Chats',
-              isDark: isDark,
-            ),
-            _buildNavItem(
-              index: 3,
-              icon: Iconsax.clock,
-              activeIcon: Iconsax.clock5,
-              label: 'History',
-              isDark: isDark,
-            ),
-            _buildNavItem(
-              index: 4,
-              icon: Iconsax.profile_circle,
-              activeIcon: Iconsax.profile_circle5,
-              label: 'Profile',
-              isDark: isDark,
-            ),
-          ],
-        ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _NavItem(
+            icon: Iconsax.home_2,
+            activeIcon: Iconsax.home_15,
+            label: 'Home',
+            isActive: currentIndex == 0,
+            onTap: () => onTap(0),
+          ),
+          _NavItem(
+            icon: Iconsax.document,
+            activeIcon: Iconsax.document,
+            label: 'Requests',
+            isActive: currentIndex == 1,
+            onTap: () => onTap(1),
+          ),
+          _NavItem(
+            icon: Iconsax.message,
+            activeIcon: Iconsax.message,
+            label: 'Chats',
+            isActive: currentIndex == 2,
+            onTap: () => onTap(2),
+          ),
+          _NavItem(
+            icon: Iconsax.clock,
+            activeIcon: Iconsax.clock,
+            label: 'History',
+            isActive: currentIndex == 3,
+            onTap: () => onTap(3),
+          ),
+          _NavItem(
+            icon: Iconsax.setting_2,
+            activeIcon: Iconsax.setting_2,
+            label: 'Settings',
+            isActive: currentIndex == 4,
+            onTap: () => onTap(4),
+          ),
+        ],
       ),
     );
   }
+}
 
-  Widget _buildNavItem({
-    required int index,
-    required IconData icon,
-    required IconData activeIcon,
-    required String label,
-    required bool isDark,
-  }) {
-    final isActive = currentIndex == index;
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
-      onTap: () => onTap(index),
+      onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isActive
               ? AppColors.primaryYellow.withOpacity(0.15)
@@ -106,10 +119,10 @@ class PassengerBottomNav extends StatelessWidget {
           children: [
             Icon(
               isActive ? activeIcon : icon,
-              size: 24,
               color: isActive
                   ? AppColors.primaryYellow
-                  : AppColors.grey500,
+                  : (isDark ? AppColors.grey500 : AppColors.grey600),
+              size: 24,
             ),
             const SizedBox(height: 4),
             Text(
@@ -119,7 +132,7 @@ class PassengerBottomNav extends StatelessWidget {
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
                 color: isActive
                     ? AppColors.primaryYellow
-                    : AppColors.grey500,
+                    : (isDark ? AppColors.grey500 : AppColors.grey600),
               ),
             ),
           ],

@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:routelink/Screens/DriverSIde/DriverCHatSCreen.dart';
@@ -14,12 +17,9 @@ import '../../Models/Ride_request_model.dart';
 import '../../Services/Firebase Auth.dart';
 import '../Chat/Chat_Screen.dart';
 import 'Driver_BottomNav.dart';
-import 'dart:async';
-
 import 'RideRequest.dart';
 import 'RouteSetup.dart';
 import 'ActiveRideScreen.dart';
-
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -62,14 +62,42 @@ class _DriverHomeContent extends StatefulWidget {
 }
 
 class _DriverHomeContentState extends State<_DriverHomeContent> {
+  // Google Maps Controller
+  GoogleMapController? _mapController;
+
+  // Current location
+  Position? _currentPosition;
+  LatLng? _currentLatLng;
+
+  // City name (auto-detected)
+  String _currentCity = 'Detecting...';
+
+  // Map markers and polylines
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
+
+  // Active ride
   RideModel? _activeRide;
   bool _isLoading = true;
+  bool _isLocationLoading = true;
+
+  // Time display
   String _currentTime = '';
   Timer? _timer;
+  Timer? _locationTimer;
+
+  // Stream subscriptions
+  StreamSubscription<Position>? _positionStream;
+
+  // Map style for dark mode
+  String? _darkMapStyle;
+  String? _lightMapStyle;
 
   @override
   void initState() {
     super.initState();
+    _loadMapStyles();
+    _initializeLocation();
     _checkActiveRide();
     _updateTime();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -80,7 +108,164 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
   @override
   void dispose() {
     _timer?.cancel();
+    _locationTimer?.cancel();
+    _positionStream?.cancel();
+    _mapController?.dispose();
     super.dispose();
+  }
+
+  void _loadMapStyles() {
+    _darkMapStyle = '''
+    [
+      {"elementType": "geometry", "stylers": [{"color": "#212121"}]},
+      {"elementType": "labels.icon", "stylers": [{"visibility": "off"}]},
+      {"elementType": "labels.text.fill", "stylers": [{"color": "#757575"}]},
+      {"elementType": "labels.text.stroke", "stylers": [{"color": "#212121"}]},
+      {"featureType": "administrative", "elementType": "geometry", "stylers": [{"color": "#757575"}]},
+      {"featureType": "poi", "elementType": "labels.text.fill", "stylers": [{"color": "#757575"}]},
+      {"featureType": "poi.park", "elementType": "geometry", "stylers": [{"color": "#181818"}]},
+      {"featureType": "poi.park", "elementType": "labels.text.fill", "stylers": [{"color": "#616161"}]},
+      {"featureType": "road", "elementType": "geometry.fill", "stylers": [{"color": "#2c2c2c"}]},
+      {"featureType": "road", "elementType": "labels.text.fill", "stylers": [{"color": "#8a8a8a"}]},
+      {"featureType": "road.arterial", "elementType": "geometry", "stylers": [{"color": "#373737"}]},
+      {"featureType": "road.highway", "elementType": "geometry", "stylers": [{"color": "#3c3c3c"}]},
+      {"featureType": "road.highway.controlled_access", "elementType": "geometry", "stylers": [{"color": "#4e4e4e"}]},
+      {"featureType": "road.local", "elementType": "labels.text.fill", "stylers": [{"color": "#616161"}]},
+      {"featureType": "transit", "elementType": "labels.text.fill", "stylers": [{"color": "#757575"}]},
+      {"featureType": "water", "elementType": "geometry", "stylers": [{"color": "#000000"}]},
+      {"featureType": "water", "elementType": "labels.text.fill", "stylers": [{"color": "#3d3d3d"}]}
+    ]
+    ''';
+  }
+
+  Future<void> _initializeLocation() async {
+    setState(() => _isLocationLoading = true);
+
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      Get.snackbar(
+        'Location Disabled',
+        'Please enable location services',
+        backgroundColor: AppColors.error,
+        colorText: Colors.white,
+      );
+      setState(() => _isLocationLoading = false);
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        Get.snackbar(
+          'Permission Denied',
+          'Location permission is required',
+          backgroundColor: AppColors.error,
+          colorText: Colors.white,
+        );
+        setState(() => _isLocationLoading = false);
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      Get.snackbar(
+        'Permission Denied',
+        'Please enable location permission in settings',
+        backgroundColor: AppColors.error,
+        colorText: Colors.white,
+      );
+      setState(() => _isLocationLoading = false);
+      return;
+    }
+
+    try {
+      // Get initial position
+      _currentPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      _currentLatLng = LatLng(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+      );
+
+      // Update marker
+      _updateCurrentLocationMarker();
+
+      // Auto-detect city (simplified - you can use geocoding API for accurate city name)
+      _detectCity();
+
+      setState(() => _isLocationLoading = false);
+
+      // Start listening to location updates
+      _startLocationStream();
+
+    } catch (e) {
+      debugPrint('Error getting location: $e');
+      setState(() => _isLocationLoading = false);
+    }
+  }
+
+  void _startLocationStream() {
+    const locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // Update every 10 meters
+    );
+
+    _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
+        .listen((Position position) {
+      setState(() {
+        _currentPosition = position;
+        _currentLatLng = LatLng(position.latitude, position.longitude);
+        _updateCurrentLocationMarker();
+      });
+
+      // Animate camera to new position
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLng(_currentLatLng!),
+      );
+    });
+  }
+
+  void _updateCurrentLocationMarker() {
+    if (_currentLatLng == null) return;
+
+    _markers = {
+      Marker(
+        markerId: const MarkerId('current_location'),
+        position: _currentLatLng!,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        infoWindow: InfoWindow(
+          title: 'Your Location',
+          snippet: _currentCity,
+        ),
+      ),
+    };
+    setState(() {});
+  }
+
+  void _detectCity() {
+    // For Pakistan, using approximate coordinates
+    // In production, use Google Geocoding API or similar
+    if (_currentPosition != null) {
+      final lat = _currentPosition!.latitude;
+      final lng = _currentPosition!.longitude;
+
+      // Approximate city detection based on coordinates
+      if (lat >= 31.4 && lat <= 31.7 && lng >= 74.2 && lng <= 74.5) {
+        _currentCity = 'Lahore';
+      } else if (lat >= 33.5 && lat <= 33.8 && lng >= 72.8 && lng <= 73.3) {
+        _currentCity = 'Islamabad';
+      } else if (lat >= 24.8 && lat <= 25.0 && lng >= 66.9 && lng <= 67.2) {
+        _currentCity = 'Karachi';
+      } else if (lat >= 31.3 && lat <= 31.6 && lng >= 73.0 && lng <= 73.3) {
+        _currentCity = 'Faisalabad';
+      } else {
+        _currentCity = 'Your City';
+      }
+      setState(() {});
+    }
   }
 
   void _updateTime() {
@@ -113,13 +298,92 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
           });
           _isLoading = false;
         });
+        // Update route on map if active ride exists
+        _updateRouteOnMap();
       } else {
         setState(() {
           _activeRide = null;
           _isLoading = false;
+          // Clear route polylines when no active ride
+          _polylines.clear();
         });
       }
     });
+  }
+
+  void _updateRouteOnMap() {
+    if (_activeRide == null) return;
+
+    final startLatLng = LatLng(
+      _activeRide!.startLocation.latitude,
+      _activeRide!.startLocation.longitude,
+    );
+    final endLatLng = LatLng(
+      _activeRide!.endLocation.latitude,
+      _activeRide!.endLocation.longitude,
+    );
+
+    // Update markers
+    _markers = {
+      if (_currentLatLng != null)
+        Marker(
+          markerId: const MarkerId('current_location'),
+          position: _currentLatLng!,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          infoWindow: const InfoWindow(title: 'Your Location'),
+        ),
+      Marker(
+        markerId: const MarkerId('start'),
+        position: startLatLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: InfoWindow(
+          title: 'Pickup',
+          snippet: _activeRide!.startLocation.address,
+        ),
+      ),
+      Marker(
+        markerId: const MarkerId('end'),
+        position: endLatLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(
+          title: 'Drop-off',
+          snippet: _activeRide!.endLocation.address,
+        ),
+      ),
+    };
+
+    // Add polyline for route
+    _polylines = {
+      Polyline(
+        polylineId: const PolylineId('route'),
+        points: [startLatLng, endLatLng],
+        color: AppColors.primaryYellow,
+        width: 5,
+        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+      ),
+    };
+
+    setState(() {});
+
+    // Fit bounds to show entire route
+    _fitBounds(startLatLng, endLatLng);
+  }
+
+  void _fitBounds(LatLng start, LatLng end) {
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        start.latitude < end.latitude ? start.latitude : end.latitude,
+        start.longitude < end.longitude ? start.longitude : end.longitude,
+      ),
+      northeast: LatLng(
+        start.latitude > end.latitude ? start.latitude : end.latitude,
+        start.longitude > end.longitude ? start.longitude : end.longitude,
+      ),
+    );
+
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 100),
+    );
   }
 
   void _showRouteSetup() {
@@ -128,6 +392,8 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => RouteSetupSheet(
+        currentCity: _currentCity,
+        currentLatLng: _currentLatLng,
         onPublish: (startLocation, endLocation, carDetails, seats, fare) {
           Navigator.pop(context);
           _publishRoute(startLocation, endLocation, carDetails, seats, fare);
@@ -159,6 +425,7 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
         'availableSeats': seats,
         'suggestedFare': fare,
         'status': 'active',
+        'city': _currentCity,
         'createdAt': DateTime.now().toIso8601String(),
       };
 
@@ -166,7 +433,7 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
 
       Get.snackbar(
         'Route Published!',
-        'Your route is now visible to passengers',
+        'Your route is now visible to passengers in $_currentCity',
         backgroundColor: AppColors.success,
         colorText: Colors.white,
         snackPosition: SnackPosition.TOP,
@@ -183,6 +450,19 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
     }
   }
 
+  void _centerOnCurrentLocation() {
+    if (_currentLatLng != null && _mapController != null) {
+      _mapController!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: _currentLatLng!,
+            zoom: 16,
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -191,85 +471,68 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
       backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
       body: Stack(
         children: [
-          _buildMapPlaceholder(isDark),
+          // Google Map
+          _buildGoogleMap(isDark),
+
+          // Top Bar
           _buildTopBar(isDark),
-          if (_activeRide != null) _buildStatusCard(isDark),
+
+          // City Badge
+          _buildCityBadge(isDark),
+
+          // Status Card (when route is active)
           if (_activeRide != null && _activeRide!.status == RideStatus.active)
-            _buildRequestsPanel(isDark),
+            _buildStatusCard(isDark),
+
+          // Active Ride Banner
           if (_activeRide != null &&
               (_activeRide!.status == RideStatus.inProgress ||
                   _activeRide!.status == RideStatus.accepted))
             _buildActiveRideBanner(isDark),
-          if (_activeRide == null && !_isLoading) _buildSetRouteFAB(isDark),
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryYellow),
-              ),
-            ),
+
+          // Requests Panel (when route is active)
+          if (_activeRide != null && _activeRide!.status == RideStatus.active)
+            _buildRequestsPanel(isDark),
+
+          // Set Route FAB
+          if (_activeRide == null && !_isLoading)
+            _buildSetRouteFAB(isDark),
+
+          // Center Location Button
+          _buildCenterLocationButton(isDark),
+
+          // Loading Overlay
+          if (_isLoading || _isLocationLoading)
+            _buildLoadingOverlay(isDark),
         ],
       ),
     );
   }
 
-  Widget _buildMapPlaceholder(bool isDark) {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightElevated,
+  Widget _buildGoogleMap(bool isDark) {
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: _currentLatLng ?? const LatLng(31.5204, 74.3587), // Default: Lahore
+        zoom: 15,
       ),
-      child: Stack(
-        children: [
-          CustomPaint(
-            size: Size.infinite,
-            painter: GridPainter(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-          ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryYellow.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      color: AppColors.primaryYellow,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Iconsax.location, color: AppColors.darkBackground, size: 24),
-                  ),
-                ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(
-                  begin: const Offset(1, 1),
-                  end: const Offset(1.1, 1.1),
-                  duration: 1500.ms,
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkCard : AppColors.lightCard,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
-                  ),
-                  child: Text(
-                    'Your Location',
-                    style: GoogleFonts.urbanist(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white : AppColors.grey900,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      onMapCreated: (controller) {
+        _mapController = controller;
+        if (isDark && _darkMapStyle != null) {
+          _mapController!.setMapStyle(_darkMapStyle);
+        }
+        // Center on current location when map is ready
+        if (_currentLatLng != null) {
+          _centerOnCurrentLocation();
+        }
+      },
+      markers: _markers,
+      polylines: _polylines,
+      myLocationEnabled: true,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: true,
+      trafficEnabled: false,
     );
   }
 
@@ -281,6 +544,7 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
+            // Time display
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -290,11 +554,7 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Iconsax.clock,
-                    color: AppColors.primaryYellow,
-                    size: 20,
-                  ),
+                  Icon(Iconsax.clock, color: AppColors.primaryYellow, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     _currentTime,
@@ -307,7 +567,10 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                 ],
               ),
             ).animate().fadeIn(duration: 500.ms).slideX(begin: -0.2, end: 0),
+
             const Spacer(),
+
+            // Online/Offline status
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
@@ -337,7 +600,10 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                 ],
               ),
             ).animate().fadeIn(duration: 500.ms).slideX(begin: 0.2, end: 0),
+
             const SizedBox(width: 12),
+
+            // Profile avatar
             Container(
               width: 50,
               height: 50,
@@ -348,7 +614,9 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
               ),
               child: Center(
                 child: Text(
-                  user?.name.substring(0, 1).toUpperCase() ?? 'D',
+                  user?.name.isNotEmpty == true
+                      ? user!.name.substring(0, 1).toUpperCase()
+                      : 'D',
                   style: GoogleFonts.urbanist(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
@@ -363,9 +631,72 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
     );
   }
 
+  Widget _buildCityBadge(bool isDark) {
+    return Positioned(
+      top: 100,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.primaryYellow,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primaryYellow.withOpacity(0.4),
+                blurRadius: 10,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Iconsax.location, color: AppColors.darkBackground, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                _currentCity,
+                style: GoogleFonts.urbanist(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.darkBackground,
+                ),
+              ),
+            ],
+          ),
+        ).animate().fadeIn(duration: 500.ms, delay: 200.ms).slideY(begin: -0.3, end: 0),
+      ),
+    );
+  }
+
+  Widget _buildCenterLocationButton(bool isDark) {
+    return Positioned(
+      right: 16,
+      bottom: _activeRide != null ? 400 : 200,
+      child: GestureDetector(
+        onTap: _centerOnCurrentLocation,
+        child: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkCard : AppColors.lightCard,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
+          ),
+          child: Icon(
+            Iconsax.gps,
+            color: AppColors.primaryYellow,
+            size: 24,
+          ),
+        ),
+      ).animate().fadeIn(duration: 500.ms, delay: 300.ms),
+    );
+  }
+
   Widget _buildStatusCard(bool isDark) {
     return Positioned(
-      top: 120,
+      top: 140,
       left: 16,
       right: 16,
       child: Container(
@@ -411,7 +742,11 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
               onPressed: () => _endRoute(),
               child: Text(
                 'End',
-                style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.error),
+                style: GoogleFonts.urbanist(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.error,
+                ),
               ),
             ),
           ],
@@ -422,7 +757,7 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
 
   Widget _buildActiveRideBanner(bool isDark) {
     return Positioned(
-      top: 120,
+      top: 140,
       left: 16,
       right: 16,
       child: GestureDetector(
@@ -430,9 +765,17 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [AppColors.primaryYellow, AppColors.goldenYellow]),
+            gradient: const LinearGradient(
+              colors: [AppColors.primaryYellow, AppColors.goldenYellow],
+            ),
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: AppColors.primaryYellow.withOpacity(0.4), blurRadius: 15, spreadRadius: 2)],
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primaryYellow.withOpacity(0.4),
+                blurRadius: 15,
+                spreadRadius: 2,
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -450,12 +793,21 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _activeRide!.status == RideStatus.inProgress ? 'Ride in Progress' : 'Ride Accepted',
-                      style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.darkBackground),
+                      _activeRide!.status == RideStatus.inProgress
+                          ? 'Ride in Progress'
+                          : 'Ride Accepted',
+                      style: GoogleFonts.urbanist(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.darkBackground,
+                      ),
                     ),
                     Text(
                       'Passenger: ${_activeRide!.passengerName ?? 'Unknown'}',
-                      style: GoogleFonts.urbanist(fontSize: 13, color: AppColors.darkBackground.withOpacity(0.7)),
+                      style: GoogleFonts.urbanist(
+                        fontSize: 13,
+                        color: AppColors.darkBackground.withOpacity(0.7),
+                      ),
                     ),
                   ],
                 ),
@@ -478,7 +830,13 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
           decoration: BoxDecoration(
             color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, -5))],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(0, -5),
+              ),
+            ],
           ),
           child: Column(
             children: [
@@ -486,7 +844,10 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                 margin: const EdgeInsets.only(top: 12),
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(color: AppColors.grey500, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(
+                  color: AppColors.grey500,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -494,7 +855,11 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                   children: [
                     Text(
                       'Ride Requests',
-                      style: GoogleFonts.urbanist(fontSize: 20, fontWeight: FontWeight.w700, color: isDark ? Colors.white : AppColors.grey900),
+                      style: GoogleFonts.urbanist(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : AppColors.grey900,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     StreamBuilder<QuerySnapshot>(
@@ -507,8 +872,18 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                         final count = snapshot.data?.docs.length ?? 0;
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: AppColors.primaryYellow, borderRadius: BorderRadius.circular(10)),
-                          child: Text('$count', style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.darkBackground)),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryYellow,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '$count',
+                            style: GoogleFonts.urbanist(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.darkBackground,
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -525,9 +900,15 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                       .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryYellow)));
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryYellow),
+                        ),
+                      );
                     }
+
                     final requests = snapshot.data?.docs ?? [];
+
                     if (requests.isEmpty) {
                       return Center(
                         child: Column(
@@ -535,19 +916,29 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                           children: [
                             Icon(Iconsax.user_search, size: 48, color: AppColors.grey500),
                             const SizedBox(height: 16),
-                            Text('No requests yet', style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500)),
-                            Text('Waiting for passengers...', style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500)),
+                            Text(
+                              'No requests yet',
+                              style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500),
+                            ),
+                            Text(
+                              'Waiting for passengers in $_currentCity...',
+                              style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500),
+                            ),
                           ],
                         ),
                       );
                     }
+
                     return ListView.builder(
                       controller: scrollController,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: requests.length,
                       itemBuilder: (context, index) {
                         final requestData = requests[index].data() as Map<String, dynamic>;
-                        final request = RideRequestModel.fromJson({'id': requests[index].id, ...requestData});
+                        final request = RideRequestModel.fromJson({
+                          'id': requests[index].id,
+                          ...requestData,
+                        });
                         return RideRequestCard(
                           request: {
                             'id': request.id,
@@ -560,8 +951,13 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
                           },
                           onAccept: () => _acceptRequest(request),
                           onReject: () => _rejectRequest(request.id),
-                          onChat: () => Get.to(() => ChatScreen(userName: request.passengerName, isDriver: true)),
-                        ).animate().fadeIn(duration: 400.ms, delay: (index * 100).ms).slideX(begin: 0.1, end: 0);
+                          onChat: () => Get.to(() => ChatScreen(
+                            userName: request.passengerName,
+                            isDriver: true,
+                          )),
+                        ).animate()
+                            .fadeIn(duration: 400.ms, delay: (index * 100).ms)
+                            .slideX(begin: 0.1, end: 0);
                       },
                     );
                   },
@@ -594,10 +990,38 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
           children: [
             const Icon(Iconsax.routing_2, size: 24),
             const SizedBox(width: 12),
-            Text('Set Your Route', style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(
+              'Set Your Route in $_currentCity',
+              style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
           ],
         ),
       ).animate().fadeIn(duration: 600.ms, delay: 300.ms).slideY(begin: 0.3, end: 0),
+    );
+  }
+
+  Widget _buildLoadingOverlay(bool isDark) {
+    return Container(
+      color: (isDark ? AppColors.darkBackground : AppColors.lightBackground).withOpacity(0.8),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryYellow),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _isLocationLoading ? 'Getting your location...' : 'Loading...',
+              style: GoogleFonts.urbanist(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : AppColors.grey900,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -607,24 +1031,42 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
         'status': 'accepted',
         'respondedAt': DateTime.now().toIso8601String(),
       });
+
       await FirebaseFirestore.instance.collection('rides').doc(_activeRide!.id).update({
         'status': 'accepted',
         'passengerId': request.passengerId,
         'passengerName': request.passengerName,
         'acceptedFare': request.offeredFare,
       });
+
+      // Reject other pending requests
       final otherRequests = await FirebaseFirestore.instance
           .collection('ride_requests')
           .where('rideId', isEqualTo: _activeRide!.id)
           .where('status', isEqualTo: 'pending')
           .get();
+
       for (var doc in otherRequests.docs) {
-        await doc.reference.update({'status': 'rejected', 'respondedAt': DateTime.now().toIso8601String()});
+        await doc.reference.update({
+          'status': 'rejected',
+          'respondedAt': DateTime.now().toIso8601String(),
+        });
       }
-      Get.snackbar('Request Accepted!', 'You accepted ${request.passengerName}\'s request',
-          backgroundColor: AppColors.success, colorText: Colors.white, snackPosition: SnackPosition.TOP);
+
+      Get.snackbar(
+        'Request Accepted!',
+        'You accepted ${request.passengerName}\'s request',
+        backgroundColor: AppColors.success,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.TOP,
+      );
     } catch (e) {
-      Get.snackbar('Error', 'Failed to accept request: $e', backgroundColor: AppColors.error, colorText: Colors.white);
+      Get.snackbar(
+        'Error',
+        'Failed to accept request: $e',
+        backgroundColor: AppColors.error,
+        colorText: Colors.white,
+      );
     }
   }
 
@@ -634,69 +1076,97 @@ class _DriverHomeContentState extends State<_DriverHomeContent> {
         'status': 'rejected',
         'respondedAt': DateTime.now().toIso8601String(),
       });
-      Get.snackbar('Request Rejected', 'The request has been rejected', backgroundColor: AppColors.grey700, colorText: Colors.white);
+
+      Get.snackbar(
+        'Request Rejected',
+        'The request has been rejected',
+        backgroundColor: AppColors.grey700,
+        colorText: Colors.white,
+      );
     } catch (e) {
-      Get.snackbar('Error', 'Failed to reject request: $e', backgroundColor: AppColors.error, colorText: Colors.white);
+      Get.snackbar(
+        'Error',
+        'Failed to reject request: $e',
+        backgroundColor: AppColors.error,
+        colorText: Colors.white,
+      );
     }
   }
 
   void _endRoute() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     Get.dialog(
       AlertDialog(
-        backgroundColor: Theme.of(context).brightness == Brightness.dark ? AppColors.darkCard : AppColors.lightCard,
+        backgroundColor: isDark ? AppColors.darkCard : AppColors.lightCard,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('End Route', style: GoogleFonts.urbanist(fontSize: 20, fontWeight: FontWeight.w700)),
-        content: Text('Are you sure you want to end this route?', style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500)),
+        title: Text(
+          'End Route',
+          style: GoogleFonts.urbanist(fontSize: 20, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'Are you sure you want to end this route?',
+          style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500),
+        ),
         actions: [
           TextButton(
             onPressed: () => Get.back(),
-            child: Text('Cancel', style: GoogleFonts.urbanist(fontWeight: FontWeight.w600, color: AppColors.grey500)),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.urbanist(fontWeight: FontWeight.w600, color: AppColors.grey500),
+            ),
           ),
           ElevatedButton(
             onPressed: () async {
               Get.back();
               try {
-                await FirebaseFirestore.instance.collection('rides').doc(_activeRide!.id).update({'status': 'cancelled'});
+                await FirebaseFirestore.instance.collection('rides').doc(_activeRide!.id).update({
+                  'status': 'cancelled',
+                });
+
+                // Cancel pending requests
                 final requests = await FirebaseFirestore.instance
                     .collection('ride_requests')
                     .where('rideId', isEqualTo: _activeRide!.id)
                     .where('status', isEqualTo: 'pending')
                     .get();
+
                 for (var doc in requests.docs) {
                   await doc.reference.update({'status': 'cancelled'});
                 }
-                Get.snackbar('Route Ended', 'Your route has been cancelled', backgroundColor: AppColors.grey700, colorText: Colors.white);
+
+                // Clear route from map
+                setState(() {
+                  _polylines.clear();
+                  _updateCurrentLocationMarker();
+                });
+
+                Get.snackbar(
+                  'Route Ended',
+                  'Your route has been cancelled',
+                  backgroundColor: AppColors.grey700,
+                  colorText: Colors.white,
+                );
               } catch (e) {
-                Get.snackbar('Error', 'Failed to end route: $e', backgroundColor: AppColors.error, colorText: Colors.white);
+                Get.snackbar(
+                  'Error',
+                  'Failed to end route: $e',
+                  backgroundColor: AppColors.error,
+                  colorText: Colors.white,
+                );
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            child: Text('End Route', style: GoogleFonts.urbanist(fontWeight: FontWeight.w600, color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text(
+              'End Route',
+              style: GoogleFonts.urbanist(fontWeight: FontWeight.w600, color: Colors.white),
+            ),
           ),
         ],
       ),
     );
   }
-}
-
-class GridPainter extends CustomPainter {
-  final Color color;
-  GridPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color.withOpacity(0.3)
-      ..strokeWidth = 0.5;
-    const spacing = 30.0;
-    for (double x = 0; x < size.width; x += spacing) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += spacing) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

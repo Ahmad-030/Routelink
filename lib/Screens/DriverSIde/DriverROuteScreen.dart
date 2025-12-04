@@ -159,7 +159,7 @@ class DriverRoutesScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _formatDate(ride.createdAt),
+                        _formatDate(ride.createdAt ?? DateTime.now()),
                         style: GoogleFonts.urbanist(
                           fontSize: 13,
                           color: AppColors.grey500,

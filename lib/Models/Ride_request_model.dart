@@ -1,14 +1,14 @@
 /// ============================================
 /// RIDE REQUEST MODEL
-/// Represents a ride request from passenger
+/// Model for ride requests from passengers
 /// ============================================
 
 class RideRequestModel {
   final String id;
   final String rideId;
+  final String driverId;
   final String passengerId;
   final String passengerName;
-  final String? passengerPhoto;
   final double passengerRating;
   final String pickupAddress;
   final String dropoffAddress;
@@ -17,20 +17,18 @@ class RideRequestModel {
   final double dropoffLat;
   final double dropoffLng;
   final int offeredFare;
-  final RequestStatus status;
-  final DateTime createdAt;
-  final DateTime? respondedAt;
-  final String? message;
+  final int? suggestedFare;
   final double? distance;
-  final int? estimatedDuration;
+  final String status; // pending, accepted, rejected, cancelled
+  final DateTime? createdAt;
 
   RideRequestModel({
     required this.id,
     required this.rideId,
+    required this.driverId,
     required this.passengerId,
     required this.passengerName,
-    this.passengerPhoto,
-    this.passengerRating = 5.0,
+    required this.passengerRating,
     required this.pickupAddress,
     required this.dropoffAddress,
     required this.pickupLat,
@@ -38,21 +36,19 @@ class RideRequestModel {
     required this.dropoffLat,
     required this.dropoffLng,
     required this.offeredFare,
-    this.status = RequestStatus.pending,
-    required this.createdAt,
-    this.respondedAt,
-    this.message,
+    this.suggestedFare,
     this.distance,
-    this.estimatedDuration,
+    required this.status,
+    this.createdAt,
   });
 
   factory RideRequestModel.fromJson(Map<String, dynamic> json) {
     return RideRequestModel(
       id: json['id'] ?? '',
       rideId: json['rideId'] ?? '',
+      driverId: json['driverId'] ?? '',
       passengerId: json['passengerId'] ?? '',
-      passengerName: json['passengerName'] ?? '',
-      passengerPhoto: json['passengerPhoto'],
+      passengerName: json['passengerName'] ?? 'Passenger',
       passengerRating: (json['passengerRating'] ?? 5.0).toDouble(),
       pickupAddress: json['pickupAddress'] ?? '',
       dropoffAddress: json['dropoffAddress'] ?? '',
@@ -61,19 +57,12 @@ class RideRequestModel {
       dropoffLat: (json['dropoffLat'] ?? 0.0).toDouble(),
       dropoffLng: (json['dropoffLng'] ?? 0.0).toDouble(),
       offeredFare: json['offeredFare'] ?? 0,
-      status: RequestStatus.values.firstWhere(
-            (e) => e.name == json['status'],
-        orElse: () => RequestStatus.pending,
-      ),
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
-          : DateTime.now(),
-      respondedAt: json['respondedAt'] != null
-          ? DateTime.parse(json['respondedAt'])
-          : null,
-      message: json['message'],
+      suggestedFare: json['suggestedFare'],
       distance: json['distance']?.toDouble(),
-      estimatedDuration: json['estimatedDuration'],
+      status: json['status'] ?? 'pending',
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'])
+          : null,
     );
   }
 
@@ -81,9 +70,9 @@ class RideRequestModel {
     return {
       'id': id,
       'rideId': rideId,
+      'driverId': driverId,
       'passengerId': passengerId,
       'passengerName': passengerName,
-      'passengerPhoto': passengerPhoto,
       'passengerRating': passengerRating,
       'pickupAddress': pickupAddress,
       'dropoffAddress': dropoffAddress,
@@ -92,21 +81,19 @@ class RideRequestModel {
       'dropoffLat': dropoffLat,
       'dropoffLng': dropoffLng,
       'offeredFare': offeredFare,
-      'status': status.name,
-      'createdAt': createdAt.toIso8601String(),
-      'respondedAt': respondedAt?.toIso8601String(),
-      'message': message,
+      'suggestedFare': suggestedFare,
       'distance': distance,
-      'estimatedDuration': estimatedDuration,
+      'status': status,
+      'createdAt': createdAt?.toIso8601String(),
     };
   }
 
   RideRequestModel copyWith({
     String? id,
     String? rideId,
+    String? driverId,
     String? passengerId,
     String? passengerName,
-    String? passengerPhoto,
     double? passengerRating,
     String? pickupAddress,
     String? dropoffAddress,
@@ -115,19 +102,17 @@ class RideRequestModel {
     double? dropoffLat,
     double? dropoffLng,
     int? offeredFare,
-    RequestStatus? status,
-    DateTime? createdAt,
-    DateTime? respondedAt,
-    String? message,
+    int? suggestedFare,
     double? distance,
-    int? estimatedDuration,
+    String? status,
+    DateTime? createdAt,
   }) {
     return RideRequestModel(
       id: id ?? this.id,
       rideId: rideId ?? this.rideId,
+      driverId: driverId ?? this.driverId,
       passengerId: passengerId ?? this.passengerId,
       passengerName: passengerName ?? this.passengerName,
-      passengerPhoto: passengerPhoto ?? this.passengerPhoto,
       passengerRating: passengerRating ?? this.passengerRating,
       pickupAddress: pickupAddress ?? this.pickupAddress,
       dropoffAddress: dropoffAddress ?? this.dropoffAddress,
@@ -136,22 +121,10 @@ class RideRequestModel {
       dropoffLat: dropoffLat ?? this.dropoffLat,
       dropoffLng: dropoffLng ?? this.dropoffLng,
       offeredFare: offeredFare ?? this.offeredFare,
+      suggestedFare: suggestedFare ?? this.suggestedFare,
+      distance: distance ?? this.distance,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
-      respondedAt: respondedAt ?? this.respondedAt,
-      message: message ?? this.message,
-      distance: distance ?? this.distance,
-      estimatedDuration: estimatedDuration ?? this.estimatedDuration,
     );
   }
-}
-
-/// Request Status
-enum RequestStatus {
-  pending,    // Waiting for driver response
-  accepted,   // Driver accepted the request
-  rejected,   // Driver rejected the request
-  cancelled,  // Passenger cancelled the request
-  negotiating, // In negotiation
-  expired,    // Request timed out
 }

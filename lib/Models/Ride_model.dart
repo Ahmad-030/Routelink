@@ -1,87 +1,86 @@
 /// ============================================
 /// RIDE MODEL
-/// Represents a ride/route
+/// Core model for rides in the app
 /// ============================================
+
+enum RideStatus {
+  active,    // Driver posted route, waiting for passengers
+  accepted,  // Passenger request accepted
+  inProgress, // Ride is ongoing
+  completed,  // Ride finished
+  cancelled,  // Ride was cancelled
+}
 
 class RideModel {
   final String id;
   final String driverId;
-  final String driverName;
-  final String? passengerId;
-  final String? passengerName;
+  final String? driverName;
+  final double? driverRating;
   final LocationPoint startLocation;
   final LocationPoint endLocation;
-  final List<LocationPoint> viaPoints;
   final CarDetails carDetails;
   final int availableSeats;
   final int? suggestedFare;
-  final int? offeredFare;
   final int? acceptedFare;
-  final RideStatus status;
-  final DateTime createdAt;
-  final DateTime? startedAt;
-  final DateTime? completedAt;
-  final String? polyline;
   final double? distance;
   final int? estimatedDuration;
+  final RideStatus status;
+  final String? passengerId;
+  final String? passengerName;
+  final double? passengerRating;
+  final DateTime? createdAt;
+  final DateTime? completedAt;
+  final List<String>? routePolyline;
 
   RideModel({
     required this.id,
     required this.driverId,
-    required this.driverName,
-    this.passengerId,
-    this.passengerName,
+    this.driverName,
+    this.driverRating,
     required this.startLocation,
     required this.endLocation,
-    this.viaPoints = const [],
     required this.carDetails,
     required this.availableSeats,
     this.suggestedFare,
-    this.offeredFare,
     this.acceptedFare,
-    this.status = RideStatus.active,
-    required this.createdAt,
-    this.startedAt,
-    this.completedAt,
-    this.polyline,
     this.distance,
     this.estimatedDuration,
+    required this.status,
+    this.passengerId,
+    this.passengerName,
+    this.passengerRating,
+    this.createdAt,
+    this.completedAt,
+    this.routePolyline,
   });
 
   factory RideModel.fromJson(Map<String, dynamic> json) {
     return RideModel(
       id: json['id'] ?? '',
       driverId: json['driverId'] ?? '',
-      driverName: json['driverName'] ?? '',
-      passengerId: json['passengerId'],
-      passengerName: json['passengerName'],
+      driverName: json['driverName'],
+      driverRating: json['driverRating']?.toDouble(),
       startLocation: LocationPoint.fromJson(json['startLocation'] ?? {}),
       endLocation: LocationPoint.fromJson(json['endLocation'] ?? {}),
-      viaPoints: (json['viaPoints'] as List<dynamic>?)
-          ?.map((e) => LocationPoint.fromJson(e))
-          .toList() ??
-          [],
       carDetails: CarDetails.fromJson(json['carDetails'] ?? {}),
       availableSeats: json['availableSeats'] ?? 1,
       suggestedFare: json['suggestedFare'],
-      offeredFare: json['offeredFare'],
       acceptedFare: json['acceptedFare'],
-      status: RideStatus.values.firstWhere(
-            (e) => e.name == json['status'],
-        orElse: () => RideStatus.active,
-      ),
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
-          : DateTime.now(),
-      startedAt: json['startedAt'] != null
-          ? DateTime.parse(json['startedAt'])
-          : null,
-      completedAt: json['completedAt'] != null
-          ? DateTime.parse(json['completedAt'])
-          : null,
-      polyline: json['polyline'],
       distance: json['distance']?.toDouble(),
       estimatedDuration: json['estimatedDuration'],
+      status: _parseStatus(json['status']),
+      passengerId: json['passengerId'],
+      passengerName: json['passengerName'],
+      passengerRating: json['passengerRating']?.toDouble(),
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'])
+          : null,
+      completedAt: json['completedAt'] != null
+          ? DateTime.tryParse(json['completedAt'])
+          : null,
+      routePolyline: json['routePolyline'] != null
+          ? List<String>.from(json['routePolyline'])
+          : null,
     );
   }
 
@@ -90,85 +89,96 @@ class RideModel {
       'id': id,
       'driverId': driverId,
       'driverName': driverName,
-      'passengerId': passengerId,
-      'passengerName': passengerName,
+      'driverRating': driverRating,
       'startLocation': startLocation.toJson(),
       'endLocation': endLocation.toJson(),
-      'viaPoints': viaPoints.map((e) => e.toJson()).toList(),
       'carDetails': carDetails.toJson(),
       'availableSeats': availableSeats,
       'suggestedFare': suggestedFare,
-      'offeredFare': offeredFare,
       'acceptedFare': acceptedFare,
-      'status': status.name,
-      'createdAt': createdAt.toIso8601String(),
-      'startedAt': startedAt?.toIso8601String(),
-      'completedAt': completedAt?.toIso8601String(),
-      'polyline': polyline,
       'distance': distance,
       'estimatedDuration': estimatedDuration,
+      'status': status.name,
+      'passengerId': passengerId,
+      'passengerName': passengerName,
+      'passengerRating': passengerRating,
+      'createdAt': createdAt?.toIso8601String(),
+      'completedAt': completedAt?.toIso8601String(),
+      'routePolyline': routePolyline,
     };
+  }
+
+  static RideStatus _parseStatus(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'active':
+        return RideStatus.active;
+      case 'accepted':
+        return RideStatus.accepted;
+      case 'inprogress':
+        return RideStatus.inProgress;
+      case 'completed':
+        return RideStatus.completed;
+      case 'cancelled':
+        return RideStatus.cancelled;
+      default:
+        return RideStatus.active;
+    }
   }
 
   RideModel copyWith({
     String? id,
     String? driverId,
     String? driverName,
-    String? passengerId,
-    String? passengerName,
+    double? driverRating,
     LocationPoint? startLocation,
     LocationPoint? endLocation,
-    List<LocationPoint>? viaPoints,
     CarDetails? carDetails,
     int? availableSeats,
     int? suggestedFare,
-    int? offeredFare,
     int? acceptedFare,
-    RideStatus? status,
-    DateTime? createdAt,
-    DateTime? startedAt,
-    DateTime? completedAt,
-    String? polyline,
     double? distance,
     int? estimatedDuration,
+    RideStatus? status,
+    String? passengerId,
+    String? passengerName,
+    double? passengerRating,
+    DateTime? createdAt,
+    DateTime? completedAt,
+    List<String>? routePolyline,
   }) {
     return RideModel(
       id: id ?? this.id,
       driverId: driverId ?? this.driverId,
       driverName: driverName ?? this.driverName,
-      passengerId: passengerId ?? this.passengerId,
-      passengerName: passengerName ?? this.passengerName,
+      driverRating: driverRating ?? this.driverRating,
       startLocation: startLocation ?? this.startLocation,
       endLocation: endLocation ?? this.endLocation,
-      viaPoints: viaPoints ?? this.viaPoints,
       carDetails: carDetails ?? this.carDetails,
       availableSeats: availableSeats ?? this.availableSeats,
       suggestedFare: suggestedFare ?? this.suggestedFare,
-      offeredFare: offeredFare ?? this.offeredFare,
       acceptedFare: acceptedFare ?? this.acceptedFare,
-      status: status ?? this.status,
-      createdAt: createdAt ?? this.createdAt,
-      startedAt: startedAt ?? this.startedAt,
-      completedAt: completedAt ?? this.completedAt,
-      polyline: polyline ?? this.polyline,
       distance: distance ?? this.distance,
       estimatedDuration: estimatedDuration ?? this.estimatedDuration,
+      status: status ?? this.status,
+      passengerId: passengerId ?? this.passengerId,
+      passengerName: passengerName ?? this.passengerName,
+      passengerRating: passengerRating ?? this.passengerRating,
+      createdAt: createdAt ?? this.createdAt,
+      completedAt: completedAt ?? this.completedAt,
+      routePolyline: routePolyline ?? this.routePolyline,
     );
   }
 }
 
-/// Location Point
 class LocationPoint {
   final double latitude;
   final double longitude;
   final String address;
-  final String? name;
 
   LocationPoint({
     required this.latitude,
     required this.longitude,
     required this.address,
-    this.name,
   });
 
   factory LocationPoint.fromJson(Map<String, dynamic> json) {
@@ -176,7 +186,6 @@ class LocationPoint {
       latitude: (json['latitude'] ?? 0.0).toDouble(),
       longitude: (json['longitude'] ?? 0.0).toDouble(),
       address: json['address'] ?? '',
-      name: json['name'],
     );
   }
 
@@ -185,23 +194,21 @@ class LocationPoint {
       'latitude': latitude,
       'longitude': longitude,
       'address': address,
-      'name': name,
     };
   }
 }
 
-/// Car Details
 class CarDetails {
   final String name;
   final String number;
   final String? color;
-  final String? model;
+  final String? type;
 
   CarDetails({
     required this.name,
     required this.number,
     this.color,
-    this.model,
+    this.type,
   });
 
   factory CarDetails.fromJson(Map<String, dynamic> json) {
@@ -209,7 +216,7 @@ class CarDetails {
       name: json['name'] ?? '',
       number: json['number'] ?? '',
       color: json['color'],
-      model: json['model'],
+      type: json['type'],
     );
   }
 
@@ -218,17 +225,7 @@ class CarDetails {
       'name': name,
       'number': number,
       'color': color,
-      'model': model,
+      'type': type,
     };
   }
-}
-
-/// Ride Status
-enum RideStatus {
-  active,      // Route is published, waiting for passengers
-  requested,   // Passenger has requested
-  accepted,    // Driver accepted the request
-  inProgress,  // Ride is ongoing
-  completed,   // Ride completed
-  cancelled,   // Ride was cancelled
 }

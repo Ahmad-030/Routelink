@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
@@ -15,7 +16,7 @@ import '../Chat/Chat_Screen.dart';
 
 /// ============================================
 /// ACTIVE RIDE SCREEN
-/// Real-time ride tracking with start/end controls
+/// Real-time ride tracking with Google Maps
 /// ============================================
 
 class ActiveRideScreen extends StatefulWidget {
@@ -36,6 +37,19 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
   late AnimationController _pulseController;
   double _rideProgress = 0.0;
 
+  // Google Maps
+  GoogleMapController? _mapController;
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
+  LatLng? _currentLatLng;
+
+  // Route points for animation
+  List<LatLng> _routePoints = [];
+  int _currentRouteIndex = 0;
+
+  // Map style for dark mode
+  String? _darkMapStyle;
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +58,9 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
+
+    _loadMapStyles();
+    _initializeMap();
     _listenToRideUpdates();
     _startLocationUpdates();
   }
@@ -53,7 +70,102 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
     _locationTimer?.cancel();
     _rideSubscription?.cancel();
     _pulseController.dispose();
+    _mapController?.dispose();
     super.dispose();
+  }
+
+  void _loadMapStyles() {
+    _darkMapStyle = '''
+    [
+      {"elementType": "geometry", "stylers": [{"color": "#212121"}]},
+      {"elementType": "labels.icon", "stylers": [{"visibility": "off"}]},
+      {"elementType": "labels.text.fill", "stylers": [{"color": "#757575"}]},
+      {"elementType": "labels.text.stroke", "stylers": [{"color": "#212121"}]},
+      {"featureType": "road", "elementType": "geometry.fill", "stylers": [{"color": "#2c2c2c"}]},
+      {"featureType": "road.highway", "elementType": "geometry", "stylers": [{"color": "#3c3c3c"}]},
+      {"featureType": "water", "elementType": "geometry", "stylers": [{"color": "#000000"}]}
+    ]
+    ''';
+  }
+
+  void _initializeMap() {
+    final startLatLng = LatLng(
+      _ride.startLocation.latitude,
+      _ride.startLocation.longitude,
+    );
+    final endLatLng = LatLng(
+      _ride.endLocation.latitude,
+      _ride.endLocation.longitude,
+    );
+
+    // Create simple route points between start and end
+    _routePoints = _createRoutePoints(startLatLng, endLatLng);
+
+    // Set up markers
+    _updateMapMarkers(startLatLng, endLatLng);
+
+    // Set up polyline
+    _polylines = {
+      Polyline(
+        polylineId: const PolylineId('route'),
+        points: _routePoints,
+        color: AppColors.primaryYellow,
+        width: 5,
+      ),
+    };
+  }
+
+  List<LatLng> _createRoutePoints(LatLng start, LatLng end) {
+    // Create intermediate points for smoother route
+    List<LatLng> points = [];
+    const int steps = 20;
+
+    for (int i = 0; i <= steps; i++) {
+      double fraction = i / steps;
+      double lat = start.latitude + (end.latitude - start.latitude) * fraction;
+      double lng = start.longitude + (end.longitude - start.longitude) * fraction;
+      points.add(LatLng(lat, lng));
+    }
+
+    return points;
+  }
+
+  void _updateMapMarkers(LatLng startLatLng, LatLng endLatLng) {
+    _markers = {
+      // Pickup marker
+      Marker(
+        markerId: const MarkerId('pickup'),
+        position: startLatLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: InfoWindow(
+          title: 'Pickup',
+          snippet: _ride.startLocation.address,
+        ),
+      ),
+      // Drop-off marker
+      Marker(
+        markerId: const MarkerId('dropoff'),
+        position: endLatLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(
+          title: 'Drop-off',
+          snippet: _ride.endLocation.address,
+        ),
+      ),
+    };
+
+    // Add driver marker if we have current position
+    if (_currentLatLng != null) {
+      _markers.add(
+        Marker(
+          markerId: const MarkerId('driver'),
+          position: _currentLatLng!,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          infoWindow: const InfoWindow(title: 'You'),
+          anchor: const Offset(0.5, 0.5),
+        ),
+      );
+    }
   }
 
   void _listenToRideUpdates() {
@@ -85,7 +197,14 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
 
     if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
       try {
-        _currentPosition = await Geolocator.getCurrentPosition();
+        _currentPosition = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+        _currentLatLng = LatLng(
+          _currentPosition!.latitude,
+          _currentPosition!.longitude,
+        );
+        _updateMapWithCurrentLocation();
         setState(() {});
       } catch (e) {
         debugPrint('Error getting location: $e');
@@ -93,25 +212,111 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
 
       _locationTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
         try {
-          final position = await Geolocator.getCurrentPosition();
+          final position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+          );
           _currentPosition = position;
+          _currentLatLng = LatLng(position.latitude, position.longitude);
 
           if (_ride.status == RideStatus.inProgress) {
+            // Update location in Firebase
             await FirebaseDatabase.instance.ref('ride_locations/${_ride.id}').update({
               'latitude': position.latitude,
               'longitude': position.longitude,
               'timestamp': ServerValue.timestamp,
             });
 
-            setState(() {
-              _rideProgress = (_rideProgress + 0.05).clamp(0.0, 0.95);
-            });
+            // Update progress
+            _updateRideProgress();
           }
+
+          _updateMapWithCurrentLocation();
+          setState(() {});
         } catch (e) {
           debugPrint('Error updating location: $e');
         }
       });
     }
+  }
+
+  void _updateMapWithCurrentLocation() {
+    if (_currentLatLng == null) return;
+
+    final startLatLng = LatLng(
+      _ride.startLocation.latitude,
+      _ride.startLocation.longitude,
+    );
+    final endLatLng = LatLng(
+      _ride.endLocation.latitude,
+      _ride.endLocation.longitude,
+    );
+
+    _updateMapMarkers(startLatLng, endLatLng);
+
+    // Animate camera to current location
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLng(_currentLatLng!),
+    );
+  }
+
+  void _updateRideProgress() {
+    if (_currentLatLng == null) return;
+
+    final startLatLng = LatLng(
+      _ride.startLocation.latitude,
+      _ride.startLocation.longitude,
+    );
+    final endLatLng = LatLng(
+      _ride.endLocation.latitude,
+      _ride.endLocation.longitude,
+    );
+
+    // Calculate total distance
+    final totalDistance = Geolocator.distanceBetween(
+      startLatLng.latitude,
+      startLatLng.longitude,
+      endLatLng.latitude,
+      endLatLng.longitude,
+    );
+
+    // Calculate distance from start to current position
+    final traveledDistance = Geolocator.distanceBetween(
+      startLatLng.latitude,
+      startLatLng.longitude,
+      _currentLatLng!.latitude,
+      _currentLatLng!.longitude,
+    );
+
+    // Calculate progress
+    _rideProgress = (traveledDistance / totalDistance).clamp(0.0, 1.0);
+  }
+
+  void _fitMapBounds() {
+    if (_mapController == null) return;
+
+    final startLatLng = LatLng(
+      _ride.startLocation.latitude,
+      _ride.startLocation.longitude,
+    );
+    final endLatLng = LatLng(
+      _ride.endLocation.latitude,
+      _ride.endLocation.longitude,
+    );
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        startLatLng.latitude < endLatLng.latitude ? startLatLng.latitude : endLatLng.latitude,
+        startLatLng.longitude < endLatLng.longitude ? startLatLng.longitude : endLatLng.longitude,
+      ),
+      northeast: LatLng(
+        startLatLng.latitude > endLatLng.latitude ? startLatLng.latitude : endLatLng.latitude,
+        startLatLng.longitude > endLatLng.longitude ? startLatLng.longitude : endLatLng.longitude,
+      ),
+    );
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 100),
+    );
   }
 
   Future<void> _startRide() async {
@@ -142,8 +347,12 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
         borderRadius: 12,
       );
     } catch (e) {
-      Get.snackbar('Error', 'Failed to start ride: $e',
-          backgroundColor: AppColors.error, colorText: Colors.white);
+      Get.snackbar(
+        'Error',
+        'Failed to start ride: $e',
+        backgroundColor: AppColors.error,
+        colorText: Colors.white,
+      );
     }
 
     setState(() => _isLoading = false);
@@ -167,16 +376,20 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
               child: const Icon(Iconsax.tick_circle, color: AppColors.success),
             ),
             const SizedBox(width: 12),
-            Text('Complete Ride',
-                style: GoogleFonts.urbanist(fontSize: 20, fontWeight: FontWeight.w700)),
+            Text(
+              'Complete Ride',
+              style: GoogleFonts.urbanist(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Are you sure you want to complete this ride?',
-                style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500)),
+            Text(
+              'Are you sure you want to complete this ride?',
+              style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500),
+            ),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(16),
@@ -187,11 +400,18 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Fare Amount',
-                      style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500)),
-                  Text('Rs. ${_ride.acceptedFare ?? _ride.suggestedFare ?? 0}',
-                      style: GoogleFonts.urbanist(
-                          fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.primaryYellow)),
+                  Text(
+                    'Fare Amount',
+                    style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500),
+                  ),
+                  Text(
+                    'Rs. ${_ride.acceptedFare ?? _ride.suggestedFare ?? 0}',
+                    style: GoogleFonts.urbanist(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryYellow,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -200,8 +420,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
         actions: [
           TextButton(
             onPressed: () => Get.back(),
-            child: Text('Cancel',
-                style: GoogleFonts.urbanist(fontWeight: FontWeight.w600, color: AppColors.grey500)),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.urbanist(fontWeight: FontWeight.w600, color: AppColors.grey500),
+            ),
           ),
           ElevatedButton.icon(
             onPressed: () async {
@@ -226,8 +448,12 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
                 Get.back();
                 _showCompletionDialog();
               } catch (e) {
-                Get.snackbar('Error', 'Failed to end ride: $e',
-                    backgroundColor: AppColors.error, colorText: Colors.white);
+                Get.snackbar(
+                  'Error',
+                  'Failed to end ride: $e',
+                  backgroundColor: AppColors.error,
+                  colorText: Colors.white,
+                );
               }
 
               setState(() => _isLoading = false);
@@ -265,17 +491,27 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
               ),
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
+                decoration: const BoxDecoration(
+                  color: AppColors.success,
+                  shape: BoxShape.circle,
+                ),
                 child: const Icon(Iconsax.tick_circle, color: Colors.white, size: 40),
               ),
             ),
             const SizedBox(height: 24),
-            Text('Ride Completed! 🎉',
-                style: GoogleFonts.urbanist(
-                    fontSize: 24, fontWeight: FontWeight.w700, color: isDark ? Colors.white : AppColors.grey900)),
+            Text(
+              'Ride Completed! 🎉',
+              style: GoogleFonts.urbanist(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white : AppColors.grey900,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text('Thank you for using RouteLink',
-                style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500)),
+            Text(
+              'Thank you for using RouteLink',
+              style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500),
+            ),
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(16),
@@ -289,8 +525,11 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
                   const SizedBox(height: 8),
                   _buildSummaryRow('Duration', '${_ride.estimatedDuration ?? 0} min'),
                   const Divider(height: 24),
-                  _buildSummaryRow('Earned', 'Rs. ${_ride.acceptedFare ?? _ride.suggestedFare ?? 0}',
-                      isHighlighted: true),
+                  _buildSummaryRow(
+                    'Earned',
+                    'Rs. ${_ride.acceptedFare ?? _ride.suggestedFare ?? 0}',
+                    isHighlighted: true,
+                  ),
                 ],
               ),
             ),
@@ -305,7 +544,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
-                child: Text('Done', style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w700)),
+                child: Text(
+                  'Done',
+                  style: GoogleFonts.urbanist(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
               ),
             ),
           ],
@@ -320,11 +562,14 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500)),
-        Text(value,
-            style: GoogleFonts.urbanist(
-                fontSize: isHighlighted ? 18 : 14,
-                fontWeight: isHighlighted ? FontWeight.w700 : FontWeight.w600,
-                color: isHighlighted ? AppColors.primaryYellow : null)),
+        Text(
+          value,
+          style: GoogleFonts.urbanist(
+            fontSize: isHighlighted ? 18 : 14,
+            fontWeight: isHighlighted ? FontWeight.w700 : FontWeight.w600,
+            color: isHighlighted ? AppColors.primaryYellow : null,
+          ),
+        ),
       ],
     );
   }
@@ -347,17 +592,23 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
               child: const Icon(Iconsax.danger, color: AppColors.error),
             ),
             const SizedBox(width: 12),
-            Text('Cancel Ride',
-                style: GoogleFonts.urbanist(fontSize: 20, fontWeight: FontWeight.w700)),
+            Text(
+              'Cancel Ride',
+              style: GoogleFonts.urbanist(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
           ],
         ),
-        content: Text('Are you sure you want to cancel this ride? This may affect your rating.',
-            style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500)),
+        content: Text(
+          'Are you sure you want to cancel this ride? This may affect your rating.',
+          style: GoogleFonts.urbanist(fontSize: 16, color: AppColors.grey500),
+        ),
         actions: [
           TextButton(
             onPressed: () => Get.back(),
-            child: Text('No, Keep Ride',
-                style: GoogleFonts.urbanist(fontWeight: FontWeight.w600, color: AppColors.grey500)),
+            child: Text(
+              'No, Keep Ride',
+              style: GoogleFonts.urbanist(fontWeight: FontWeight.w600, color: AppColors.grey500),
+            ),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -371,11 +622,19 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
                 await FirebaseDatabase.instance.ref('ride_locations/${_ride.id}').remove();
 
                 Get.back();
-                Get.snackbar('Ride Cancelled', 'The ride has been cancelled',
-                    backgroundColor: AppColors.error, colorText: Colors.white);
+                Get.snackbar(
+                  'Ride Cancelled',
+                  'The ride has been cancelled',
+                  backgroundColor: AppColors.error,
+                  colorText: Colors.white,
+                );
               } catch (e) {
-                Get.snackbar('Error', 'Failed to cancel ride: $e',
-                    backgroundColor: AppColors.error, colorText: Colors.white);
+                Get.snackbar(
+                  'Error',
+                  'Failed to cancel ride: $e',
+                  backgroundColor: AppColors.error,
+                  colorText: Colors.white,
+                );
               }
 
               setState(() => _isLoading = false);
@@ -401,128 +660,48 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
       backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
       body: Stack(
         children: [
-          _buildMapWithTracking(isDark),
+          // Google Map
+          _buildGoogleMap(isDark),
+
+          // Top Bar
           _buildTopBar(isDark),
+
+          // Ride Info Panel
           _buildRideInfoPanel(isDark, isDriver),
+
+          // Loading Overlay
           if (_isLoading) _buildLoadingOverlay(isDark),
         ],
       ),
     );
   }
 
-  Widget _buildMapWithTracking(bool isDark) {
-    final screenSize = MediaQuery.of(context).size;
-
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: BoxDecoration(color: isDark ? AppColors.darkSurface : AppColors.lightElevated),
-      child: Stack(
-        children: [
-          CustomPaint(
-            size: Size.infinite,
-            painter: GridPainter(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
-          ),
-          CustomPaint(
-            size: Size.infinite,
-            painter: RoutePainter(
-              startPoint: Offset(screenSize.width * 0.15, screenSize.height * 0.25),
-              endPoint: Offset(screenSize.width * 0.85, screenSize.height * 0.55),
-              progress: _ride.status == RideStatus.inProgress ? _rideProgress : 0.0,
-              isDark: isDark,
-            ),
-          ),
-          Positioned(
-            left: screenSize.width * 0.15 - 20,
-            top: screenSize.height * 0.25 - 45,
-            child: _buildLocationMarker(
-                color: AppColors.success, icon: Iconsax.location, label: 'Pickup', isDark: isDark),
-          ),
-          Positioned(
-            left: screenSize.width * 0.85 - 20,
-            top: screenSize.height * 0.55 - 45,
-            child: _buildLocationMarker(
-                color: AppColors.error, icon: Iconsax.location_tick, label: 'Drop-off', isDark: isDark),
-          ),
-          if (_ride.status == RideStatus.inProgress)
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 500),
-              left: screenSize.width * 0.15 + (screenSize.width * 0.7 * _rideProgress) - 25,
-              top: screenSize.height * 0.25 + (screenSize.height * 0.3 * _rideProgress) - 25,
-              child: AnimatedBuilder(
-                animation: _pulseController,
-                builder: (context, child) {
-                  return Transform.scale(scale: 1 + (_pulseController.value * 0.1), child: child);
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryYellow,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(color: AppColors.primaryYellow.withOpacity(0.5), blurRadius: 20, spreadRadius: 5),
-                    ],
-                  ),
-                  child: const Icon(Iconsax.car, color: AppColors.darkBackground, size: 26),
-                ),
-              ),
-            ),
-          if (_ride.status == RideStatus.inProgress)
-            Positioned(
-              top: screenSize.height * 0.4,
-              left: 20,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkCard : AppColors.lightCard,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('ETA', style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500)),
-                    Text('${((1 - _rideProgress) * (_ride.estimatedDuration ?? 15)).toInt()} min',
-                        style: GoogleFonts.urbanist(
-                            fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.primaryYellow)),
-                  ],
-                ),
-              ).animate().fadeIn(duration: 500.ms).slideX(begin: -0.2, end: 0),
-            ),
-        ],
-      ),
+  Widget _buildGoogleMap(bool isDark) {
+    final startLatLng = LatLng(
+      _ride.startLocation.latitude,
+      _ride.startLocation.longitude,
     );
-  }
 
-  Widget _buildLocationMarker({
-    required Color color,
-    required IconData icon,
-    required String label,
-    required bool isDark,
-  }) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 12, spreadRadius: 2)],
-          ),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: isDark ? AppColors.darkCard : AppColors.lightCard,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(label,
-              style: GoogleFonts.urbanist(
-                  fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppColors.grey900)),
-        ),
-      ],
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: _currentLatLng ?? startLatLng,
+        zoom: 15,
+      ),
+      onMapCreated: (controller) {
+        _mapController = controller;
+        if (isDark && _darkMapStyle != null) {
+          _mapController!.setMapStyle(_darkMapStyle);
+        }
+        // Fit map to show entire route
+        Future.delayed(const Duration(milliseconds: 500), _fitMapBounds);
+      },
+      markers: _markers,
+      polylines: _polylines,
+      myLocationEnabled: true,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: true,
     );
   }
 
@@ -547,6 +726,21 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
             ),
             const Spacer(),
             _buildStatusBadge(isDark),
+            const SizedBox(width: 12),
+            // Fit bounds button
+            GestureDetector(
+              onTap: _fitMapBounds,
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkCard : AppColors.lightCard,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
+                ),
+                child: const Icon(Iconsax.maximize_4, color: AppColors.primaryYellow),
+              ),
+            ),
           ],
         ),
       ),
@@ -590,7 +784,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
         children: [
           Icon(icon, size: 18, color: textColor),
           const SizedBox(width: 8),
-          Text(text, style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
+          Text(
+            text,
+            style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w600, color: textColor),
+          ),
         ],
       ),
     );
@@ -607,7 +804,11 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
             color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, -5)),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 20,
+                offset: const Offset(0, -5),
+              ),
             ],
           ),
           child: SingleChildScrollView(
@@ -618,19 +819,31 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
                   margin: const EdgeInsets.only(top: 12),
                   width: 40,
                   height: 4,
-                  decoration: BoxDecoration(color: AppColors.grey500, borderRadius: BorderRadius.circular(2)),
+                  decoration: BoxDecoration(
+                    color: AppColors.grey500,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20), child: _buildUserCard(isDark, isDriver)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _buildUserCard(isDark, isDriver),
+                ),
                 const SizedBox(height: 16),
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: _buildRouteCard(isDark)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _buildRouteCard(isDark),
+                ),
                 const SizedBox(height: 16),
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: _buildStatsCard(isDark)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _buildStatsCard(isDark),
+                ),
                 const SizedBox(height: 20),
                 Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _buildActionButtons(isDark, isDriver)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _buildActionButtons(isDark, isDriver),
+                ),
                 const SizedBox(height: 30),
               ],
             ),
@@ -655,11 +868,19 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Center(
-              child: Text((otherUserName ?? 'U').substring(0, 1).toUpperCase(),
-                  style: GoogleFonts.urbanist(
-                      fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.darkBackground)),
+              child: Text(
+                (otherUserName ?? 'U').substring(0, 1).toUpperCase(),
+                style: GoogleFonts.urbanist(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.darkBackground,
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 14),
@@ -667,24 +888,42 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(otherUserName ?? (isDriver ? 'Passenger' : 'Driver'),
-                    style: GoogleFonts.urbanist(
-                        fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? Colors.white : AppColors.grey900)),
+                Text(
+                  otherUserName ?? (isDriver ? 'Passenger' : 'Driver'),
+                  style: GoogleFonts.urbanist(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : AppColors.grey900,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
                     const Icon(Iconsax.star1, size: 14, color: AppColors.primaryYellow),
                     const SizedBox(width: 4),
-                    Text('4.8',
-                        style: GoogleFonts.urbanist(
-                            fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.grey500)),
+                    Text(
+                      '4.8',
+                      style: GoogleFonts.urbanist(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.grey500,
+                      ),
+                    ),
                     if (!isDriver) ...[
                       const SizedBox(width: 8),
                       Container(
-                          width: 4, height: 4, decoration: const BoxDecoration(color: AppColors.grey500, shape: BoxShape.circle)),
+                        width: 4,
+                        height: 4,
+                        decoration: const BoxDecoration(
+                          color: AppColors.grey500,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
                       const SizedBox(width: 8),
-                      Text(_ride.carDetails.name,
-                          style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500)),
+                      Text(
+                        _ride.carDetails.name,
+                        style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500),
+                      ),
                     ],
                   ],
                 ),
@@ -694,15 +933,24 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
           Row(
             children: [
               _buildCircleButton(
-                  icon: Iconsax.message,
-                  color: AppColors.info,
-                  onTap: () => Get.to(() => ChatScreen(userName: otherUserName ?? 'User', isDriver: isDriver))),
+                icon: Iconsax.message,
+                color: AppColors.info,
+                onTap: () => Get.to(() => ChatScreen(
+                  userName: otherUserName ?? 'User',
+                  isDriver: isDriver,
+                )),
+              ),
               const SizedBox(width: 10),
               _buildCircleButton(
-                  icon: Iconsax.call,
-                  color: AppColors.success,
-                  onTap: () => Get.snackbar('Calling...', 'Phone feature coming soon',
-                      backgroundColor: AppColors.info, colorText: Colors.white)),
+                icon: Iconsax.call,
+                color: AppColors.success,
+                onTap: () => Get.snackbar(
+                  'Calling...',
+                  'Phone feature coming soon',
+                  backgroundColor: AppColors.info,
+                  colorText: Colors.white,
+                ),
+              ),
             ],
           ),
         ],
@@ -710,12 +958,19 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
     );
   }
 
-  Widget _buildCircleButton({required IconData icon, required Color color, required VoidCallback onTap}) {
+  Widget _buildCircleButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(12),
+        ),
         child: Icon(icon, color: color, size: 20),
       ),
     );
@@ -734,18 +989,29 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
           Row(
             children: [
               Container(
-                  width: 12, height: 12, decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle)),
+                width: 12,
+                height: 12,
+                decoration: const BoxDecoration(
+                  color: AppColors.success,
+                  shape: BoxShape.circle,
+                ),
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Pickup', style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500)),
-                    Text(_ride.startLocation.address,
-                        style: GoogleFonts.urbanist(
-                            fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppColors.grey900),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      _ride.startLocation.address,
+                      style: GoogleFonts.urbanist(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.grey900,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
@@ -755,29 +1021,45 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
             padding: const EdgeInsets.only(left: 5),
             child: Column(
               children: List.generate(
-                  3,
-                      (i) => Container(
-                      width: 2,
-                      height: 5,
-                      margin: const EdgeInsets.symmetric(vertical: 2),
-                      decoration: BoxDecoration(color: AppColors.grey500, borderRadius: BorderRadius.circular(1)))),
+                3,
+                    (i) => Container(
+                  width: 2,
+                  height: 5,
+                  margin: const EdgeInsets.symmetric(vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.grey500,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
             ),
           ),
           Row(
             children: [
               Container(
-                  width: 12, height: 12, decoration: const BoxDecoration(color: AppColors.error, shape: BoxShape.circle)),
+                width: 12,
+                height: 12,
+                decoration: const BoxDecoration(
+                  color: AppColors.error,
+                  shape: BoxShape.circle,
+                ),
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Drop-off', style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500)),
-                    Text(_ride.endLocation.address,
-                        style: GoogleFonts.urbanist(
-                            fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppColors.grey900),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      _ride.endLocation.address,
+                      style: GoogleFonts.urbanist(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : AppColors.grey900,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
@@ -793,32 +1075,66 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-            colors: [AppColors.primaryYellow.withOpacity(0.15), AppColors.primaryYellow.withOpacity(0.05)]),
+          colors: [
+            AppColors.primaryYellow.withOpacity(0.15),
+            AppColors.primaryYellow.withOpacity(0.05),
+          ],
+        ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.primaryYellow.withOpacity(0.3)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildStatItem(icon: Iconsax.location, value: '${_ride.distance?.toStringAsFixed(1) ?? '0'} km', label: 'Distance'),
-          Container(width: 1, height: 40, color: AppColors.primaryYellow.withOpacity(0.3)),
-          _buildStatItem(icon: Iconsax.clock, value: '${_ride.estimatedDuration ?? 0} min', label: 'Duration'),
-          Container(width: 1, height: 40, color: AppColors.primaryYellow.withOpacity(0.3)),
           _buildStatItem(
-              icon: Iconsax.money, value: 'Rs.${_ride.acceptedFare ?? _ride.suggestedFare ?? 0}', label: 'Fare', isHighlighted: true),
+            icon: Iconsax.location,
+            value: '${_ride.distance?.toStringAsFixed(1) ?? '0'} km',
+            label: 'Distance',
+          ),
+          Container(
+            width: 1,
+            height: 40,
+            color: AppColors.primaryYellow.withOpacity(0.3),
+          ),
+          _buildStatItem(
+            icon: Iconsax.clock,
+            value: '${_ride.estimatedDuration ?? 0} min',
+            label: 'Duration',
+          ),
+          Container(
+            width: 1,
+            height: 40,
+            color: AppColors.primaryYellow.withOpacity(0.3),
+          ),
+          _buildStatItem(
+            icon: Iconsax.money,
+            value: 'Rs.${_ride.acceptedFare ?? _ride.suggestedFare ?? 0}',
+            label: 'Fare',
+            isHighlighted: true,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildStatItem({required IconData icon, required String value, required String label, bool isHighlighted = false}) {
+  Widget _buildStatItem({
+    required IconData icon,
+    required String value,
+    required String label,
+    bool isHighlighted = false,
+  }) {
     return Column(
       children: [
         Icon(icon, size: 20, color: isHighlighted ? AppColors.primaryYellow : AppColors.grey500),
         const SizedBox(height: 8),
-        Text(value,
-            style: GoogleFonts.urbanist(
-                fontSize: 16, fontWeight: FontWeight.w700, color: isHighlighted ? AppColors.primaryYellow : null)),
+        Text(
+          value,
+          style: GoogleFonts.urbanist(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: isHighlighted ? AppColors.primaryYellow : null,
+          ),
+        ),
         Text(label, style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500)),
       ],
     );
@@ -850,7 +1166,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
             child: ElevatedButton.icon(
               onPressed: _startRide,
               icon: const Icon(Iconsax.play, size: 22),
-              label: Text('Start Ride', style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700)),
+              label: Text(
+                'Start Ride',
+                style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.success,
                 foregroundColor: Colors.white,
@@ -863,8 +1182,14 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
           const SizedBox(height: 12),
           TextButton(
             onPressed: _cancelRide,
-            child: Text('Cancel Ride',
-                style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.error)),
+            child: Text(
+              'Cancel Ride',
+              style: GoogleFonts.urbanist(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.error,
+              ),
+            ),
           ),
         ],
       );
@@ -873,6 +1198,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
     if (_ride.status == RideStatus.inProgress) {
       return Column(
         children: [
+          // Progress indicator
           Container(
             margin: const EdgeInsets.only(bottom: 16),
             padding: const EdgeInsets.all(16),
@@ -886,10 +1212,18 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Trip Progress', style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500)),
-                    Text('${(_rideProgress * 100).toInt()}%',
-                        style: GoogleFonts.urbanist(
-                            fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primaryYellow)),
+                    Text(
+                      'Trip Progress',
+                      style: GoogleFonts.urbanist(fontSize: 14, color: AppColors.grey500),
+                    ),
+                    Text(
+                      '${(_rideProgress * 100).toInt()}%',
+                      style: GoogleFonts.urbanist(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primaryYellow,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -910,7 +1244,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
             child: ElevatedButton.icon(
               onPressed: _endRide,
               icon: const Icon(Iconsax.tick_circle, size: 22),
-              label: Text('Complete Ride', style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700)),
+              label: Text(
+                'Complete Ride',
+                style: GoogleFonts.urbanist(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryYellow,
                 foregroundColor: AppColors.darkBackground,
@@ -923,8 +1260,14 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
           const SizedBox(height: 12),
           TextButton(
             onPressed: _cancelRide,
-            child: Text('Cancel Ride',
-                style: GoogleFonts.urbanist(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.error)),
+            child: Text(
+              'Cancel Ride',
+              style: GoogleFonts.urbanist(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.error,
+              ),
+            ),
           ),
         ],
       );
@@ -950,77 +1293,23 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> with TickerProvider
                 width: 50,
                 height: 50,
                 child: CircularProgressIndicator(
-                    strokeWidth: 3, valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryYellow)),
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryYellow),
+                ),
               ),
               const SizedBox(height: 20),
-              Text('Please wait...',
-                  style: GoogleFonts.urbanist(
-                      fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? Colors.white : AppColors.grey900)),
+              Text(
+                'Please wait...',
+                style: GoogleFonts.urbanist(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : AppColors.grey900,
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
   }
-}
-
-class GridPainter extends CustomPainter {
-  final Color color;
-  GridPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color.withOpacity(0.3)
-      ..strokeWidth = 0.5;
-    const spacing = 30.0;
-    for (double x = 0; x < size.width; x += spacing) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += spacing) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class RoutePainter extends CustomPainter {
-  final Offset startPoint;
-  final Offset endPoint;
-  final double progress;
-  final bool isDark;
-
-  RoutePainter({required this.startPoint, required this.endPoint, required this.progress, this.isDark = true});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bgPaint = Paint()
-      ..color = AppColors.grey500.withOpacity(0.3)
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    final path = Path();
-    path.moveTo(startPoint.dx, startPoint.dy);
-    final controlPoint1 = Offset(startPoint.dx + (endPoint.dx - startPoint.dx) * 0.3, startPoint.dy + 50);
-    final controlPoint2 = Offset(startPoint.dx + (endPoint.dx - startPoint.dx) * 0.7, endPoint.dy - 50);
-    path.cubicTo(controlPoint1.dx, controlPoint1.dy, controlPoint2.dx, controlPoint2.dy, endPoint.dx, endPoint.dy);
-    canvas.drawPath(path, bgPaint);
-
-    if (progress > 0) {
-      final progressPaint = Paint()
-        ..color = AppColors.primaryYellow
-        ..strokeWidth = 4
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke;
-      final pathMetrics = path.computeMetrics().first;
-      final progressPath = pathMetrics.extractPath(0, pathMetrics.length * progress);
-      canvas.drawPath(progressPath, progressPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant RoutePainter oldDelegate) => oldDelegate.progress != progress;
 }
