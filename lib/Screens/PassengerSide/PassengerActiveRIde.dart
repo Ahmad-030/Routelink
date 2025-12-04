@@ -110,13 +110,21 @@ class _PassengerActiveRideScreenState extends State<PassengerActiveRideScreen>
 
         if (newLat != null && newLng != null) {
           final newLocation = LatLng(newLat, newLng);
+
+          // Calculate bearing from location change for smooth movement
           if (_driverLocation != null) {
-            _driverBearing = _calculateBearing(_driverLocation!, newLocation);
+            final distance = _calculateDistanceKm(_driverLocation!, newLocation);
+            // Only update bearing if movement is significant (> 5 meters)
+            if (distance > 0.005) {
+              _driverBearing = _calculateBearing(_driverLocation!, newLocation);
+            }
           }
+
           setState(() {
             _driverLocation = newLocation;
             _lastLocationUpdate = DateTime.now();
           });
+
           _updateDriverMarker();
           _calculateProgress();
           _calculateETA();
@@ -170,6 +178,25 @@ class _PassengerActiveRideScreenState extends State<PassengerActiveRideScreen>
 
   void _updateDriverMarker() {
     if (_driverLocation == null) return;
+
+    // Find closest route segment to calculate proper bearing
+    if (_routeCoordinates.length > 1) {
+      int closestIndex = 0;
+      double minDistance = double.infinity;
+      for (int i = 0; i < _routeCoordinates.length; i++) {
+        double dist = _calculateDistanceKm(_driverLocation!, _routeCoordinates[i]);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestIndex = i;
+        }
+      }
+
+      // Update bearing based on route direction at closest point
+      if (closestIndex < _routeCoordinates.length - 1) {
+        _driverBearing = _calculateBearing(_routeCoordinates[closestIndex], _routeCoordinates[closestIndex + 1]);
+      }
+    }
+
     setState(() {
       _markers.removeWhere((m) => m.markerId.value == 'driver');
       _markers.add(Marker(
@@ -194,7 +221,6 @@ class _PassengerActiveRideScreenState extends State<PassengerActiveRideScreen>
 
       PolylinePoints polylinePoints = PolylinePoints(apiKey: 'AIzaSyBf_uxaitv3XvVHTSPZHGa20C6q6U8IkkE');
       PolylineResult result = await polylinePoints.getRouteBetweenCoordinates(
-
         request: PolylineRequest(
           origin: PointLatLng(pickupLatLng.latitude, pickupLatLng.longitude),
           destination: PointLatLng(dropoffLatLng.latitude, dropoffLatLng.longitude),
@@ -210,6 +236,7 @@ class _PassengerActiveRideScreenState extends State<PassengerActiveRideScreen>
             points: _routeCoordinates,
             color: AppColors.primaryYellow,
             width: 5,
+            geodesic: true,
           ));
         });
       }
@@ -228,6 +255,7 @@ class _PassengerActiveRideScreenState extends State<PassengerActiveRideScreen>
         points: [pickupLatLng, dropoffLatLng],
         color: AppColors.primaryYellow,
         width: 5,
+        geodesic: true,
       ));
     });
   }
@@ -236,6 +264,7 @@ class _PassengerActiveRideScreenState extends State<PassengerActiveRideScreen>
     if (_driverLocation == null || _routeCoordinates.isEmpty) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // Find closest point on the route
     int closestIndex = 0;
     double minDistance = double.infinity;
     for (int i = 0; i < _routeCoordinates.length; i++) {
@@ -246,19 +275,68 @@ class _PassengerActiveRideScreenState extends State<PassengerActiveRideScreen>
       }
     }
 
+    // Calculate bearing for next segment to ensure proper direction
+    if (closestIndex < _routeCoordinates.length - 1) {
+      _driverBearing = _calculateBearing(_routeCoordinates[closestIndex], _routeCoordinates[closestIndex + 1]);
+    }
+
+    // Create route segments with driver position snapped to route
+    final snappedDriverPosition = _snapToRoute(_driverLocation!, closestIndex);
     final completedRoute = _routeCoordinates.sublist(0, closestIndex + 1);
-    final remainingRoute = _routeCoordinates.sublist(closestIndex);
+    if (snappedDriverPosition != null) {
+      completedRoute.add(snappedDriverPosition);
+    }
+
+    final remainingRoute = snappedDriverPosition != null
+        ? [snappedDriverPosition, ..._routeCoordinates.sublist(closestIndex + 1)]
+        : _routeCoordinates.sublist(closestIndex);
 
     setState(() {
       _polylines = {
         if (completedRoute.length > 1)
-          Polyline(polylineId: const PolylineId('completed'), points: completedRoute,
-              color: isDark ? AppColors.grey600 : AppColors.grey400, width: 5),
+          Polyline(
+            polylineId: const PolylineId('completed'),
+            points: completedRoute,
+            color: isDark ? AppColors.grey600 : AppColors.grey400,
+            width: 5,
+            geodesic: true,
+          ),
         if (remainingRoute.length > 1)
-          Polyline(polylineId: const PolylineId('remaining'), points: remainingRoute,
-              color: AppColors.primaryYellow, width: 5),
+          Polyline(
+            polylineId: const PolylineId('remaining'),
+            points: remainingRoute,
+            color: AppColors.primaryYellow,
+            width: 5,
+            geodesic: true,
+          ),
       };
     });
+  }
+
+  // Snap driver location to the nearest point on the route segment
+  LatLng? _snapToRoute(LatLng point, int closestIndex) {
+    if (closestIndex >= _routeCoordinates.length - 1) return null;
+
+    final segmentStart = _routeCoordinates[closestIndex];
+    final segmentEnd = _routeCoordinates[closestIndex + 1];
+
+    // Calculate the projection of the point onto the line segment
+    final dx = segmentEnd.longitude - segmentStart.longitude;
+    final dy = segmentEnd.latitude - segmentStart.latitude;
+
+    if (dx == 0 && dy == 0) return segmentStart;
+
+    final t = ((point.longitude - segmentStart.longitude) * dx +
+        (point.latitude - segmentStart.latitude) * dy) /
+        (dx * dx + dy * dy);
+
+    // Clamp t to [0, 1] to stay within the segment
+    final clampedT = t.clamp(0.0, 1.0);
+
+    return LatLng(
+      segmentStart.latitude + clampedT * dy,
+      segmentStart.longitude + clampedT * dx,
+    );
   }
 
   void _fitAllMarkers() {
@@ -680,7 +758,7 @@ class _PassengerActiveRideScreenState extends State<PassengerActiveRideScreen>
         ])),
         Row(children: [
           _circleBtn(Iconsax.message, AppColors.info, () => Get.to(() => ChatScreen(
-              userName: _ride.driverName ?? 'Driver', isDriver: false, recipientId: null,), transition: Transition.rightToLeftWithFade)),
+            userName: _ride.driverName ?? 'Driver', isDriver: false, recipientId: null,), transition: Transition.rightToLeftWithFade)),
           const SizedBox(width: 10),
           _circleBtn(Iconsax.call, AppColors.success, () => Get.snackbar('Calling...', 'Phone feature coming soon',
               backgroundColor: AppColors.info, colorText: Colors.white, snackPosition: SnackPosition.TOP)),

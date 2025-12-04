@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:get/get.dart';
@@ -37,7 +36,7 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
   @override
   void initState() {
     super.initState();
-    // Load once on init
+    // Load once on init - NO AUTO-REFRESH
     _loadRequests();
   }
 
@@ -226,7 +225,8 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
         elevation: 0,
         leading: IconButton(
           onPressed: () => Get.back(),
-          icon: Icon(Iconsax.arrow_left, color: isDark ? Colors.white : AppColors.grey900),
+          icon: Icon(Iconsax.arrow_left,
+              color: isDark ? Colors.white : AppColors.grey900),
         ),
         title: Text(
           'Ride Requests',
@@ -299,7 +299,8 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
             const SizedBox(height: 16),
             Text('Failed to load',
                 style: GoogleFonts.urbanist(
-                    fontSize: 18, fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
                     color: isDark ? Colors.white : AppColors.grey900)),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -328,7 +329,8 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
                 color: AppColors.primaryYellow.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Iconsax.message_notif, size: 50, color: AppColors.primaryYellow),
+              child: const Icon(Iconsax.message_notif,
+                  size: 50, color: AppColors.primaryYellow),
             ),
             const SizedBox(height: 24),
             Text(
@@ -382,7 +384,8 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
               ),
               transition: Transition.rightToLeftWithFade,
             ),
-          ).animate()
+          )
+              .animate()
               .fadeIn(duration: 300.ms, delay: (index * 80).ms)
               .slideY(begin: 0.1, end: 0);
         },
@@ -418,7 +421,8 @@ class _RequestCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkCard : AppColors.lightCard,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        border: Border.all(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -443,7 +447,8 @@ class _RequestCard extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    (request['name'] as String?)?.substring(0, 1).toUpperCase() ?? 'P',
+                    (request['name'] as String?)?.substring(0, 1).toUpperCase() ??
+                        'P',
                     style: GoogleFonts.urbanist(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -453,7 +458,6 @@ class _RequestCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-
               // Info
               Expanded(
                 child: Column(
@@ -470,7 +474,8 @@ class _RequestCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Iconsax.star1, color: AppColors.primaryYellow, size: 14),
+                        const Icon(Iconsax.star1,
+                            color: AppColors.primaryYellow, size: 14),
                         const SizedBox(width: 4),
                         Text(
                           '${request['rating'] ?? 4.5}',
@@ -483,7 +488,8 @@ class _RequestCard extends StatelessWidget {
                         if (request['distance'] != null) ...[
                           const SizedBox(width: 12),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
                               color: AppColors.info.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(6),
@@ -503,7 +509,6 @@ class _RequestCard extends StatelessWidget {
                   ],
                 ),
               ),
-
               // Chat button
               GestureDetector(
                 onTap: onChat,
@@ -513,14 +518,13 @@ class _RequestCard extends StatelessWidget {
                     color: AppColors.primaryYellow.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Iconsax.message, color: AppColors.primaryYellow, size: 22),
+                  child: const Icon(Iconsax.message,
+                      color: AppColors.primaryYellow, size: 22),
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 16),
-
           // Route info
           Container(
             padding: const EdgeInsets.all(12),
@@ -598,9 +602,7 @@ class _RequestCard extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(height: 12),
-
           // Time ago
           if (request['createdAt'] != null)
             Padding(
@@ -611,12 +613,12 @@ class _RequestCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Text(
                     _timeAgo(request['createdAt']),
-                    style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500),
+                    style: GoogleFonts.urbanist(
+                        fontSize: 12, color: AppColors.grey500),
                   ),
                 ],
               ),
             ),
-
           // Fare + Buttons
           Row(
             children: [
@@ -624,7 +626,8 @@ class _RequestCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Offered Fare',
-                      style: GoogleFonts.urbanist(fontSize: 12, color: AppColors.grey500)),
+                      style: GoogleFonts.urbanist(
+                          fontSize: 12, color: AppColors.grey500)),
                   Text(
                     'Rs. ${request['offeredFare'] ?? 0}',
                     style: GoogleFonts.urbanist(
@@ -639,26 +642,34 @@ class _RequestCard extends StatelessWidget {
               OutlinedButton(
                 onPressed: onReject,
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   side: const BorderSide(color: AppColors.error),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 child: Text('Decline',
                     style: GoogleFonts.urbanist(
-                        fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.error)),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.error)),
               ),
               const SizedBox(width: 10),
               ElevatedButton(
                 onPressed: onAccept,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.success,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                   elevation: 0,
                 ),
                 child: Text('Accept',
                     style: GoogleFonts.urbanist(
-                        fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white)),
               ),
             ],
           ),
@@ -669,6 +680,7 @@ class _RequestCard extends StatelessWidget {
 
   String _timeAgo(dynamic timestamp) {
     if (timestamp == null) return '';
+
     DateTime time;
     if (timestamp is Timestamp) {
       time = timestamp.toDate();
