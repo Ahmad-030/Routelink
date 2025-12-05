@@ -67,19 +67,19 @@ dev_dependencies:
   flutter_lints: ^3.0.1
   flutter_launcher_icons: ^0.13.1
 
-#flutter_launcher_icons:
-#  android: true
-#  ios: true
-#  image_path: "assets/icons/app_icon.png"
-#  adaptive_icon_background: "#0D0D0D"
-#  adaptive_icon_foreground: "assets/icons/app_icon_foreground.png"
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/icon.jpg"
+  adaptive_icon_background: "#0D0D0D"
+
 
 flutter:
   uses-material-design: true
-#
-#  assets:
+
+  assets:
 #    - assets/images/
-#    - assets/icons/
+    - assets/icons/
 #    - assets/animations/
 #    - assets/3d/
 
